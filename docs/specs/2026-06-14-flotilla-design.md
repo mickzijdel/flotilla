@@ -122,16 +122,22 @@ A per-repo `.claude-agent.toml` (with a global default in `~/.claude-agent/confi
   credentials, (b) a chosen `settings.json`, (c) plugins, (d) global `CLAUDE.md`. We do **not**
   copy `.claude.json` wholesale (huge, holds global oauth + per-project history). MCP servers known
   to need interactive auth are stripped or repointed at a host instance (§4.7).
-- **GitHub:** **no write credential** in the container. The engine clones (optionally with a
-  read-only token for private repos) and is the only holder of the write token.
+- **GitHub:** **no credential of any kind** in the container — not even read-only. The engine is
+  the sole holder of all GitHub creds and performs **every** remote git op (clone, fetch, pull,
+  push, PR) on the agent's behalf (§4.5).
 
 ### 4.5 Isolation & submission — "PR-only" by construction
 
 - The **engine** does a fresh `git clone` per agent into that agent's workspace volume, then mounts
-  it into the container. The agent commits **locally only**.
+  it into the container. The agent commits **locally only**. **Engine-side clone only** — no GitHub
+  cred enters the box even for private repos.
+- **On-demand fetch/pull:** the agent can request a fresh fetch/pull mid-session through the control
+  channel (the agent signals; the **engine** performs the fetch into the mounted volume with its
+  own creds). The agent never gains remote access — it only *asks*. (Request mechanism — sentinel
+  file vs in-container `flotilla` shim that signals the host — settled in the plan.)
 - On a **done-signal** (Claude Stop hook / sentinel file), the engine pushes the agent's branch and
   opens/updates a PR via `gh pr create`. Re-runnable to update the PR as the agent iterates.
-- Because the container never holds a remote write cred, the worst case is "an unreviewed PR
+- Because the container never holds any remote git cred, the worst case is "an unreviewed PR
   appears." Pair with branch protection on `main` (require PR, no direct push, no force-push) for
   defense in depth.
 
@@ -208,17 +214,30 @@ A sidebar TreeView listing agents across repos (status, repo, age) that shells o
 Dev Containers "Attach to Running Container"** so VS Code itself provides editor/terminal/file
 exploration. A few hundred lines; no webview, no bundled UI.
 
-## 7. Substrate spike (pre-implementation)
+## 7. Substrate decision — RESOLVED: devcontainer CLI + raw Docker
 
-Per the parallel-prototype rule, build two minimal spikes that each: clone a repo, build via the
-backend, run `claude` once, and surface logs/attach. Compare:
+**Decision (2026-06-14): Substrate A — the `devcontainer` CLI + raw Docker — is the v1 backend.**
+Resolved on capability/availability grounds, so the parallel build-spike was skipped.
 
-- **A — `devcontainer` CLI + raw Docker SDK:** max control, matches the design as specced.
-- **B — Docker Sandboxes (official) as the backend:** less plumbing; inherits clone-mode + safety.
+**Why A:**
+- **Availability:** Docker Sandboxes (B) requires **Docker Desktop and supports only macOS/Windows**
+  as of Mar 2026 (Linux on the roadmap; the standalone `sbx` CLI is nascent and the Desktop-
+  integrated `docker sandbox` is already deprecated). The target machine is Linux without Desktop —
+  B is a non-starter.
+- **Fit:** A natively matches three design pillars — the **devcontainer.json + Feature overlay**
+  (`devcontainer up --additional-features`), the **engine-clone-mount-no-creds** model (plain
+  `docker run -v` + host-side git), and **remote-host/multi-machine** (`DOCKER_HOST` over TLS/SSH).
+  B fights all three.
+- **Trade-off accepted:** B's microVM gives a stronger boundary than A's container. The security
+  layer (zero creds in box, default-deny egress, resource caps, branch protection) closes most of
+  that gap for a local single-user fleet.
 
-**Criteria:** devcontainer.json fidelity, Feature/firewall injection, attach ergonomics, image
-caching/start time, multi-agent-per-repo, remote-host path, maintenance surface. Recommend one,
-confirm, then build out behind the compute-backend interface.
+**Future:** because the **compute-backend interface** already abstracts this, Docker Sandboxes /
+`sbx` can be added as an *additional* backend later (when Linux lands), without disturbing the
+default Docker backend. Not either/or.
+
+**Only hands-on check still worth doing** (folded into the plan's first task): confirm
+`devcontainer up --additional-features` cleanly injects the agent Feature on a sample repo.
 
 ## 8. Prior art (why build)
 
@@ -248,7 +267,7 @@ none of these provide.
 
 ## 10. Open questions
 
-- Exact done-signal mechanism (Stop hook script vs sentinel file vs both) — settle in the plan.
-- Whether private-repo clone uses a read-only in-box token or engine-side clone only.
+- Exact done-signal / fetch-request mechanism (Stop hook script vs sentinel file vs in-container
+  `flotilla` shim) — settle in the plan.
 - Feature distribution: publish to GHCR vs vendor locally for the spike.
 - Final name (Flotilla is a working name).
