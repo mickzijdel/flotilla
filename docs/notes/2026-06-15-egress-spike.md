@@ -64,3 +64,39 @@ cache deny all
 
 No config tweak was needed — squid started clean (`listening port: 3128`) and
 enforced the allowlist as written.
+
+## Task 9 end-to-end smoke (real devcontainer + claude agent) — results
+
+Ran `flotilla spawn … --agent claude` with the firewall on (default). Verified
+the guarantee against a real provisioned agent:
+
+- **Agent on the internal net only** — `NetworkSettings.Networks` =
+  `flotilla-net-atlas` (no `bridge`).
+- **Real agent traffic, allowed:** squid logged `TCP_TUNNEL/200 CONNECT
+  api.anthropic.com:443` — the claude agent reached the Anthropic API through
+  the proxy (allowlisted via the claude profile's `egress_allow`).
+- **Real agent traffic, denied:** `TCP_DENIED/403 CONNECT
+  http-intake.logs.us5.datadoghq.com:443` — claude's telemetry to a
+  non-allowlisted host was blocked by default-deny.
+- **Manual allow/deny via the proxy:** `api.github.com` → `200`,
+  `example.com` → `000` (denied CONNECT).
+- **No direct route:** `curl --noproxy '*'` from the agent is blocked.
+- **`flotilla list`** shows exactly one agent (proxy excluded).
+- **Teardown** (`stop` + `rm`) removes the proxy container, the internal
+  network, and the agent container.
+
+### Bugs the smoke caught (now fixed)
+
+1. **squid FATAL on overlapping `dstdomain`.** The baked allowlist listed both a
+   parent and its subdomains (`github.com` + `api.github.com` +
+   `codeload.github.com`; `crates.io` + `static.crates.io`). squid refuses a
+   dstdomain list where one entry covers another → the proxy exited 1. Fixed in
+   `egress.SquidConf` (reduce to the minimal covering set).
+2. **Dead proxy went undetected.** `docker start` returns before squid validates
+   its config, so a crashed proxy left the agent confined with no egress and no
+   error. `setupFirewall` now verifies the proxy is still running (short settle)
+   before swapping the agent's network.
+3. **Proxy polluted `flotilla list`.** The proxy carries `flotilla.agent` (needed
+   so the docker backend's always-on agent-label scope can find it for
+   teardown), so it appeared as a second phantom "atlas" and could be returned by
+   `resolve()`. `List`/`resolve` now skip `flotilla.proxy`-tagged containers.
