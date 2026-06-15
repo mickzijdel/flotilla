@@ -162,6 +162,12 @@ A per-repo `.flotilla.toml` (with a global default in `~/.flotilla/config.toml`)
 
 ### 4.6 Egress — default-deny allowlist firewall
 
+> **Superseded (2026-06-15):** the in-container iptables approach below was replaced, during the
+> egress design, by an **out-of-container proxy model** (agent on a Docker `--internal` network;
+> egress only via a per-agent tinyproxy sidecar; no `NET_ADMIN`). See
+> [the egress firewall spec](2026-06-15-flotilla-egress-firewall-design.md). The allowlist sources
+> and default-deny intent below still hold; the enforcement mechanism changed.
+
 Each container runs with `NET_ADMIN` and an init firewall (lifted from Anthropic's
 `claude-code-devcontainer` / ClaudeBox `init-firewall.sh`): **default-deny egress**, allow a
 curated set — GitHub, package registries (npm/pypi/ghcr/mise), **the active agent's API endpoint
