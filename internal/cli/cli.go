@@ -21,11 +21,15 @@ func BuildRoot(f *fleet.Fleet) *cobra.Command {
 
 func spawnCmd(f *fleet.Fleet) *cobra.Command {
 	var agentName, prompt string
+	var noFirewall bool
 	c := &cobra.Command{
 		Use:   "spawn <repo>",
 		Short: "Clone a repo and start an agent on it",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if noFirewall {
+				f.EgressFirewall = false
+			}
 			if rep := preflight.Check(cmd.Context(), preflight.Real()); !rep.OK() {
 				return fmt.Errorf("preflight failed (run 'flotilla doctor'): %s", strings.Join(rep.Messages(), "; "))
 			}
@@ -47,6 +51,7 @@ func spawnCmd(f *fleet.Fleet) *cobra.Command {
 	}
 	c.Flags().StringVar(&agentName, "agent", "claude", "agent profile to run")
 	c.Flags().StringVar(&prompt, "prompt", "", "task prompt for the agent")
+	c.Flags().BoolVar(&noFirewall, "no-egress-firewall", false, "disable the default-deny egress firewall (trusted/dev runs)")
 	return c
 }
 

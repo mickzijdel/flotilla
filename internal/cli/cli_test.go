@@ -32,6 +32,18 @@ func TestListJSONOutput(t *testing.T) {
 	}
 }
 
+func TestSpawnNoEgressFirewallFlagDisables(t *testing.T) {
+	f := &fleet.Fleet{Backend: backend.NewFake(), EgressFirewall: true}
+	root := BuildRoot(f)
+	root.SetArgs([]string{"spawn", "https://example.com/x.git", "--agent", "claude", "--no-egress-firewall"})
+	// The command will fail later (no docker/devcontainer), but the flag must
+	// flip the fleet field before Spawn runs.
+	_ = root.ExecuteContext(context.Background())
+	if f.EgressFirewall {
+		t.Error("--no-egress-firewall should set Fleet.EgressFirewall = false")
+	}
+}
+
 func TestAgentsListsBuiltins(t *testing.T) {
 	root := BuildRoot(&fleet.Fleet{Backend: backend.NewFake()})
 	var buf bytes.Buffer
