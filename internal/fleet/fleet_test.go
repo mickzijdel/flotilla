@@ -27,7 +27,9 @@ func bareRepo(t *testing.T) string {
 	run("", "git", "init", "-q", work)
 	run(work, "git", "config", "user.email", "t@e.com")
 	run(work, "git", "config", "user.name", "t")
-	os.WriteFile(filepath.Join(work, "f.txt"), []byte("x"), 0o644)
+	if err := os.WriteFile(filepath.Join(work, "f.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	run(work, "git", "add", ".")
 	run(work, "git", "commit", "-q", "-m", "init")
 	run("", "git", "clone", "-q", "--bare", work, bare)
