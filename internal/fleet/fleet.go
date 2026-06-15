@@ -14,11 +14,11 @@ import (
 
 // Agent is a flotilla-managed agent as the engine sees it.
 type Agent struct {
-	Name    string
-	Repo    string
-	Status  string
-	Created time.Time
-	ID      string
+	Name    string    `json:"name"`
+	Repo    string    `json:"repo"`
+	Status  string    `json:"status"`
+	Created time.Time `json:"created"`
+	ID      string    `json:"id"`
 }
 
 // Fleet orchestrates agents over a Backend.
