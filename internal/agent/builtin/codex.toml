@@ -1,0 +1,9 @@
+name = "codex"
+install = "npm i -g @openai/codex"
+launch = 'codex exec --dangerously-bypass-approvals-and-sandbox "{prompt}"'
+setup = "builtin:codex"
+config_mounts = ["~/.codex:/root/.codex"]
+env = ["OPENAI_API_KEY"]
+transcript_path = "~/.codex/sessions"
+egress_allow = ["api.openai.com"]
+done_signal = "process-exit"
