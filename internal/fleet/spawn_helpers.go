@@ -37,9 +37,14 @@ func envFileContent(env map[string]string) []byte {
 	return []byte(b.String())
 }
 
-// launchWrapper sources the injected env-file, then execs the agent launch.
+// launchWrapper cd's into the container's mounted workspace, sources the
+// injected env-file, then execs the agent launch. The workspace is the single
+// directory devcontainer mounts under /workspaces, resolved at run time so the
+// agent operates on the repo regardless of its name.
 func launchWrapper(launch string) []string {
-	script := fmt.Sprintf("set -a; . %s 2>/dev/null; set +a; exec %s", agentEnvFile, launch)
+	script := fmt.Sprintf(
+		`cd "$(ls -d /workspaces/*/ 2>/dev/null | head -1)" 2>/dev/null; set -a; . %s 2>/dev/null; set +a; exec %s`,
+		agentEnvFile, launch)
 	return []string{"sh", "-c", script}
 }
 

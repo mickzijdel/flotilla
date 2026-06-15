@@ -52,8 +52,7 @@ type AttachInfo struct {
 type UpOpts struct {
 	Name               string
 	WorkspaceFolder    string         // engine clone dir → devcontainer --workspace-folder
-	ConfigPath         string         // external default devcontainer.json; "" = auto-discover
-	AdditionalFeatures map[string]any // e.g. {"/abs/flotilla-toolchain": {}}
+	AdditionalFeatures map[string]any // e.g. {"./flotilla-toolchain": {}} (relative to .devcontainer/)
 	Labels             map[string]string
 }
 

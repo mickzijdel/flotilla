@@ -58,25 +58,20 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		return Agent{}, err
 	}
 
-	// Scratch holds the extracted Feature + (optional) default config; consumed
-	// by `devcontainer up`'s build, then removed. Kept out of the agent's workspace.
-	scratch, err := os.MkdirTemp("", "flotilla-"+name+"-")
-	if err != nil {
-		_ = os.RemoveAll(dest)
-		return Agent{}, fmt.Errorf("scratch dir: %w", err)
-	}
-	defer func() { _ = os.RemoveAll(scratch) }()
-
-	featPath, err := feature.Extract(scratch)
-	if err != nil {
+	// Overlay the vendored toolchain Feature via `devcontainer up
+	// --additional-features`, on top of the repo's own devcontainer when present
+	// or a bundled default otherwise. The devcontainer CLI only resolves a *local*
+	// Feature when it lives in a sub-folder of the workspace's .devcontainer/ and
+	// is referenced by a path relative to that folder — so extract it there and
+	// reference it as "./flotilla-toolchain".
+	devDir := filepath.Join(dest, ".devcontainer")
+	if _, err := feature.Extract(devDir); err != nil {
 		_ = os.RemoveAll(dest)
 		return Agent{}, fmt.Errorf("extract feature: %w", err)
 	}
-
-	configPath := ""
 	if !hasDevcontainer(dest) {
-		configPath = filepath.Join(scratch, "devcontainer.json")
-		if err := os.WriteFile(configPath, defaultDevcontainerJSON(f.BaseImage), 0o644); err != nil {
+		cfg := filepath.Join(devDir, "devcontainer.json")
+		if err := os.WriteFile(cfg, defaultDevcontainerJSON(f.BaseImage), 0o644); err != nil {
 			_ = os.RemoveAll(dest)
 			return Agent{}, fmt.Errorf("write default devcontainer: %w", err)
 		}
@@ -85,8 +80,7 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	id, err := f.Backend.Up(ctx, backend.UpOpts{
 		Name:               name,
 		WorkspaceFolder:    dest,
-		ConfigPath:         configPath,
-		AdditionalFeatures: map[string]any{featPath: map[string]any{}},
+		AdditionalFeatures: map[string]any{"./flotilla-toolchain": map[string]any{}},
 		Labels: map[string]string{
 			backend.LabelAgent:   name,
 			backend.LabelRepo:    repoURL,

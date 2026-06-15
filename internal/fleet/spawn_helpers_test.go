@@ -36,6 +36,9 @@ func TestLaunchWrapperSourcesEnvFileThenExecs(t *testing.T) {
 	if !strings.Contains(got[2], agentEnvFile) || !strings.Contains(got[2], `exec claude -p "hi"`) {
 		t.Errorf("launchWrapper script = %q", got[2])
 	}
+	if !strings.Contains(got[2], "/workspaces/") {
+		t.Errorf("launchWrapper should cd into the mounted workspace: %q", got[2])
+	}
 }
 
 func TestDefaultDevcontainerJSONIsValidWithImage(t *testing.T) {

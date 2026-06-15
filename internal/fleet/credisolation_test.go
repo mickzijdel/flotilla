@@ -32,7 +32,7 @@ func TestSpawnInjectsNoGitCredentials(t *testing.T) {
 	// Collect every string Spawn handed the backend.
 	var blobs []string
 	for _, up := range fake.UpCalls {
-		blobs = append(blobs, up.WorkspaceFolder, up.ConfigPath)
+		blobs = append(blobs, up.WorkspaceFolder)
 		for k, v := range up.Labels {
 			blobs = append(blobs, k, v)
 		}

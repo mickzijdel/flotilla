@@ -20,13 +20,11 @@ func devcontainer(ctx context.Context, args ...string) (string, error) {
 	return out.String(), nil
 }
 
-// Up provisions the repo's devcontainer (or the supplied default config),
-// injecting the additional Features, and returns the container ID.
+// Up provisions the repo's devcontainer (auto-discovered from the workspace's
+// .devcontainer/, or a bundled default the engine wrote there), overlays the
+// additional Features, and returns the container ID.
 func (d *dockerBackend) Up(ctx context.Context, o UpOpts) (string, error) {
 	args := []string{"up", "--workspace-folder", o.WorkspaceFolder}
-	if o.ConfigPath != "" {
-		args = append(args, "--config", o.ConfigPath)
-	}
 	if len(o.AdditionalFeatures) > 0 {
 		b, err := json.Marshal(o.AdditionalFeatures)
 		if err != nil {
