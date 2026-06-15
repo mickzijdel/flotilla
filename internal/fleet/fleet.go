@@ -69,11 +69,11 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		},
 	})
 	if err != nil {
-		os.RemoveAll(dest)
+		_ = os.RemoveAll(dest)
 		return Agent{}, fmt.Errorf("create container: %w", err)
 	}
 	if err := f.Backend.Start(ctx, id); err != nil {
-		os.RemoveAll(dest)
+		_ = os.RemoveAll(dest)
 		return Agent{}, fmt.Errorf("start container: %w", err)
 	}
 	return Agent{Name: name, Repo: repoURL, Status: "running", Created: time.Now().UTC(), ID: id}, nil

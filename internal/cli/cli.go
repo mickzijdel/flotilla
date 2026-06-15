@@ -36,8 +36,8 @@ func spawnCmd(f *fleet.Fleet) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", a.Name, a.Status, a.ID)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", a.Name, a.Status, a.ID)
+			return err
 		},
 	}
 	c.Flags().StringVar(&agentName, "agent", "claude", "agent profile to run")
@@ -60,7 +60,9 @@ func listCmd(f *fleet.Fleet) *cobra.Command {
 				return enc.Encode(agents)
 			}
 			for _, a := range agents {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", a.Name, a.Status, a.Repo)
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", a.Name, a.Status, a.Repo); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -79,9 +81,11 @@ func attachCmd(f *fleet.Fleet) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), info.DockerExec)
-			fmt.Fprintln(cmd.OutOrStdout(), info.VSCode)
-			return nil
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), info.DockerExec); err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), info.VSCode)
+			return err
 		},
 	}
 }
@@ -123,7 +127,9 @@ func agentsCmd() *cobra.Command {
 			}
 			sort.Strings(names)
 			for _, n := range names {
-				fmt.Fprintln(cmd.OutOrStdout(), n)
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), n); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
