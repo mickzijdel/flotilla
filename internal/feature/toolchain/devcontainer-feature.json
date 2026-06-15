@@ -1,0 +1,7 @@
+{
+  "id": "flotilla-toolchain",
+  "version": "0.1.0",
+  "name": "Flotilla toolchain",
+  "description": "Common tooling for flotilla agents: node, git, gh, mise. Installs no agent CLI and no credentials.",
+  "options": {}
+}
