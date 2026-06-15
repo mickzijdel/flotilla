@@ -51,14 +51,42 @@ func SquidConf(allowlist []string, port int) string {
 	b.WriteString("acl SSL_ports port 443\n")
 	b.WriteString("acl CONNECT method CONNECT\n")
 	b.WriteString("http_access deny CONNECT !SSL_ports\n")
-	if len(allowlist) > 0 {
+	if doms := minimalDomains(allowlist); len(doms) > 0 {
 		b.WriteString("acl allowed dstdomain")
-		for _, d := range allowlist {
-			fmt.Fprintf(&b, " .%s", strings.TrimPrefix(d, "."))
+		for _, d := range doms {
+			fmt.Fprintf(&b, " .%s", d)
 		}
 		b.WriteString("\nhttp_access allow allowed\n")
 	}
 	b.WriteString("http_access deny all\n")
 	b.WriteString("cache deny all\n")
 	return b.String()
+}
+
+// minimalDomains normalizes hostnames (strips a leading dot, dedupes) and drops
+// any domain already covered by a broader entry — a squid dstdomain ACL treats
+// ".github.com" as covering all of *.github.com, and FATALs if the list also
+// names a subdomain like "api.github.com". The result is sorted for determinism.
+func minimalDomains(allowlist []string) []string {
+	set := map[string]bool{}
+	for _, d := range allowlist {
+		if d = strings.TrimPrefix(strings.TrimSpace(d), "."); d != "" {
+			set[d] = true
+		}
+	}
+	var out []string
+	for d := range set {
+		covered := false
+		for parent := range set {
+			if parent != d && strings.HasSuffix(d, "."+parent) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			out = append(out, d)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
