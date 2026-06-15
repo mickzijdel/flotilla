@@ -23,10 +23,7 @@ func (j *injector) Exec(ctx context.Context, cmd []string) error {
 }
 
 func (j *injector) CopyTo(ctx context.Context, hostPath, destPath string) error {
-	if err := j.mkdirParent(ctx, destPath); err != nil {
-		return err
-	}
-	return j.be.CopyTo(ctx, j.id, hostPath, destPath)
+	return j.copyIn(ctx, hostPath, destPath)
 }
 
 // WriteFile writes generated content to a 0600 host temp file and copies it in.
@@ -47,10 +44,24 @@ func (j *injector) WriteFile(ctx context.Context, content []byte, destPath strin
 	if err := tmp.Close(); err != nil {
 		return err
 	}
+	return j.copyIn(ctx, tmp.Name(), destPath)
+}
+
+// copyIn creates the parent dir, `docker cp`s the file/dir in, then (for a
+// non-root run user) chowns it to that user. `docker cp` preserves the host
+// source uid, which need not match the container run user — the chown makes the
+// injected token/config readable+writable by the agent regardless of that uid.
+func (j *injector) copyIn(ctx context.Context, hostPath, destPath string) error {
 	if err := j.mkdirParent(ctx, destPath); err != nil {
 		return err
 	}
-	return j.be.CopyTo(ctx, j.id, tmp.Name(), destPath)
+	if err := j.be.CopyTo(ctx, j.id, hostPath, destPath); err != nil {
+		return err
+	}
+	if j.user != "" && j.user != "root" {
+		return j.be.Exec(ctx, j.id, []string{"chown", "-R", j.user, destPath})
+	}
+	return nil
 }
 
 func (j *injector) mkdirParent(ctx context.Context, destPath string) error {

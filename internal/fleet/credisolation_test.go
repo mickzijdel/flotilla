@@ -20,6 +20,7 @@ var gitCredMarkers = []string{
 
 func TestSpawnInjectsNoGitCredentials(t *testing.T) {
 	fake := backend.NewFake()
+	fake.RemoteUser = "ubuntu" // exercise the non-root run-user (su-wrapped) path
 	builtins, err := agent.Builtins()
 	if err != nil {
 		t.Fatalf("Builtins: %v", err)
