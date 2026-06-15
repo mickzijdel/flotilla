@@ -109,3 +109,21 @@ func (f *Fleet) Attach(ctx context.Context, name string) (backend.AttachInfo, er
 	}
 	return f.Backend.AttachInfo(ctx, c.ID)
 }
+
+// Stop stops a named agent's container.
+func (f *Fleet) Stop(ctx context.Context, name string) error {
+	c, err := f.resolve(ctx, name)
+	if err != nil {
+		return err
+	}
+	return f.Backend.Stop(ctx, c.ID)
+}
+
+// Remove force-removes a named agent's container.
+func (f *Fleet) Remove(ctx context.Context, name string) error {
+	c, err := f.resolve(ctx, name)
+	if err != nil {
+		return err
+	}
+	return f.Backend.Remove(ctx, c.ID)
+}
