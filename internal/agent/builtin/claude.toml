@@ -1,0 +1,9 @@
+name = "claude"
+install = ""
+launch = 'claude --dangerously-skip-permissions -p "{prompt}"'
+setup = "builtin:claude"
+config_mounts = []
+env = ["ANTHROPIC_API_KEY"]
+transcript_path = "~/.claude/projects"
+egress_allow = ["api.anthropic.com"]
+done_signal = "process-exit"
