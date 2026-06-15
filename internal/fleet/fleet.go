@@ -88,3 +88,24 @@ func (f *Fleet) List(ctx context.Context) ([]Agent, error) {
 	}
 	return out, nil
 }
+
+// resolve finds the backend container ID for an agent name.
+func (f *Fleet) resolve(ctx context.Context, name string) (backend.Container, error) {
+	cs, err := f.Backend.List(ctx, map[string]string{backend.LabelAgent: name})
+	if err != nil {
+		return backend.Container{}, err
+	}
+	if len(cs) == 0 {
+		return backend.Container{}, fmt.Errorf("no agent named %q", name)
+	}
+	return cs[0], nil
+}
+
+// Attach returns attach info for a named agent.
+func (f *Fleet) Attach(ctx context.Context, name string) (backend.AttachInfo, error) {
+	c, err := f.resolve(ctx, name)
+	if err != nil {
+		return backend.AttachInfo{}, err
+	}
+	return f.Backend.AttachInfo(ctx, c.ID)
+}
