@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mickzijdel/flotilla/internal/agent"
@@ -140,5 +141,73 @@ func TestSpawnClonesAndCreatesContainer(t *testing.T) {
 	}
 	if got[0].Status != "running" {
 		t.Errorf("status = %q, want running", got[0].Status)
+	}
+}
+
+func TestSpawnSetsUpFirewallAndProxyEnv(t *testing.T) {
+	fake := backend.NewFake()
+	f := &Fleet{Backend: fake, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir(), EgressFirewall: true}
+	prof := agent.Profile{Name: "stub", Launch: `echo "{prompt}"`, EgressAllow: []string{"api.anthropic.com"}}
+	a, err := f.Spawn(context.Background(), bareRepo(t), prof, "do")
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	// A proxy + network exist for the agent.
+	if len(fake.NetworkCreates) != 1 || fake.NetworkCreates[0] != netName(a.Name) {
+		t.Errorf("NetworkCreates = %v", fake.NetworkCreates)
+	}
+	proxies, _ := fake.List(context.Background(), map[string]string{"flotilla.proxy": a.Name})
+	if len(proxies) != 1 {
+		t.Errorf("want a proxy sidecar, got %v", proxies)
+	}
+	// The launch env-file content carries the proxy env.
+	var sawProxy bool
+	for _, cp := range fake.CopyCalls {
+		if strings.Contains(cp.HostPath, "flotilla-inject-") && strings.Contains(string(cp.Content), "HTTP_PROXY="+("http://"+proxyName(a.Name))) {
+			sawProxy = true
+		}
+	}
+	if !sawProxy {
+		t.Errorf("expected HTTP_PROXY in the injected env-file")
+	}
+}
+
+func TestSpawnSkipsFirewallWhenDisabled(t *testing.T) {
+	fake := backend.NewFake()
+	f := &Fleet{Backend: fake, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir(), EgressFirewall: false}
+	prof := agent.Profile{Name: "stub", Launch: `echo "{prompt}"`}
+	if _, err := f.Spawn(context.Background(), bareRepo(t), prof, "do"); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if len(fake.NetworkCreates) != 0 {
+		t.Errorf("firewall should be skipped, got NetworkCreates=%v", fake.NetworkCreates)
+	}
+}
+
+// failNetBackend errors on NetworkCreate to exercise fail-closed.
+type failNetBackend struct{ *backend.Fake }
+
+func (failNetBackend) NetworkCreate(context.Context, string, bool) error {
+	return errors.New("boom")
+}
+
+func TestSpawnFailClosedRemovesEverythingOnFirewallError(t *testing.T) {
+	fake := backend.NewFake()
+	be := failNetBackend{fake}
+	f := &Fleet{Backend: be, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir(), EgressFirewall: true}
+	prof := agent.Profile{Name: "stub", Launch: `echo "{prompt}"`}
+	if _, err := f.Spawn(context.Background(), bareRepo(t), prof, "do"); err == nil {
+		t.Fatal("expected fail-closed error when firewall setup fails")
+	}
+	// Agent container removed (no orphan), clone removed.
+	cs, _ := fake.List(context.Background(), nil)
+	for _, c := range cs {
+		if c.Labels[backend.LabelAgent] != "" && c.Labels["flotilla.proxy"] == "" {
+			t.Errorf("agent container left behind: %+v", c)
+		}
+	}
+	entries, _ := os.ReadDir(f.WorkRoot)
+	if len(entries) != 0 {
+		t.Errorf("clone not cleaned: %v", entries)
 	}
 }

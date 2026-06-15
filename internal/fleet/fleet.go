@@ -10,6 +10,7 @@ import (
 
 	"github.com/mickzijdel/flotilla/internal/agent"
 	"github.com/mickzijdel/flotilla/internal/backend"
+	"github.com/mickzijdel/flotilla/internal/egress"
 	"github.com/mickzijdel/flotilla/internal/feature"
 	"github.com/mickzijdel/flotilla/internal/gitops"
 	"github.com/mickzijdel/flotilla/internal/naming"
@@ -27,9 +28,11 @@ type Agent struct {
 
 // Fleet orchestrates agents over a Backend.
 type Fleet struct {
-	Backend   backend.Backend
-	BaseImage string
-	WorkRoot  string // host dir holding per-agent clones; defaults under ~/.flotilla
+	Backend        backend.Backend
+	BaseImage      string
+	WorkRoot       string   // host dir holding per-agent clones; defaults under ~/.flotilla
+	EgressFirewall bool     // default-deny egress via a per-agent proxy (default true via main)
+	EgressAllow    []string // engine-wide extra allowlist entries
 }
 
 func (f *Fleet) workRoot() string {
@@ -108,13 +111,22 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	// so a failed spawn leaves no orphan (the container is labelled and would
 	// otherwise appear in List and hold the name).
 	fail := func(e error) (Agent, error) {
+		if f.EgressFirewall {
+			teardownFirewall(ctx, f.Backend, name)
+		}
 		_ = f.Backend.Remove(ctx, id)
 		_ = os.RemoveAll(dest)
 		return Agent{}, e
 	}
 
-	// 1) Secrets: resolved allowlist → 0600 env-file under the run user's home.
+	// 1) Secrets: resolved allowlist + (when firewalled) the proxy env → 0600
+	//    env-file under the run user's home.
 	env := resolveEnv(prof.Env, os.LookupEnv)
+	if f.EgressFirewall {
+		for k, v := range proxyEnv(name) {
+			env[k] = v
+		}
+	}
 	if err := inj.WriteFile(ctx, envFileContent(env), agentEnvFile(home)); err != nil {
 		return fail(fmt.Errorf("inject secrets: %w", err))
 	}
@@ -131,6 +143,13 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	if strings.TrimSpace(prof.Install) != "" {
 		if err := f.Backend.Exec(ctx, id, []string{"sh", "-c", prof.Install}); err != nil {
 			return fail(fmt.Errorf("install agent: %w", err))
+		}
+	}
+	// 3.5) Egress firewall: confine the agent to the allowlist (fail-closed).
+	if f.EgressFirewall {
+		allow := egress.Compose(egress.BakedAllowlist(), prof.EgressAllow, f.EgressAllow)
+		if err := setupFirewall(ctx, f.Backend, id, name, allow); err != nil {
+			return fail(fmt.Errorf("egress firewall: %w", err))
 		}
 	}
 	// 4) Launch the agent as the non-root run user, backgrounded (exec-into-idle).
@@ -175,20 +194,26 @@ func (f *Fleet) Attach(ctx context.Context, name string) (backend.AttachInfo, er
 	return f.Backend.AttachInfo(ctx, c.ID)
 }
 
-// Stop stops a named agent's container.
+// Stop stops a named agent's container and its egress proxy.
 func (f *Fleet) Stop(ctx context.Context, name string) error {
 	c, err := f.resolve(ctx, name)
 	if err != nil {
 		return err
 	}
+	if proxies, err := f.Backend.List(ctx, map[string]string{"flotilla.proxy": name}); err == nil {
+		for _, p := range proxies {
+			_ = f.Backend.Stop(ctx, p.ID)
+		}
+	}
 	return f.Backend.Stop(ctx, c.ID)
 }
 
-// Remove force-removes a named agent's container.
+// Remove force-removes a named agent's container, its egress proxy, and network.
 func (f *Fleet) Remove(ctx context.Context, name string) error {
 	c, err := f.resolve(ctx, name)
 	if err != nil {
 		return err
 	}
+	teardownFirewall(ctx, f.Backend, name)
 	return f.Backend.Remove(ctx, c.ID)
 }
