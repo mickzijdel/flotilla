@@ -36,16 +36,16 @@ func bareRepo(t *testing.T) string {
 	return bare
 }
 
-// failCreateBackend wraps a Fake but always errors from Create, to exercise
-// Spawn's cleanup-on-failure path.
-type failCreateBackend struct{ *backend.Fake }
+// failUpBackend wraps a Fake but always errors from Up, to exercise Spawn's
+// clone-cleanup-on-failure path.
+type failUpBackend struct{ *backend.Fake }
 
-func (failCreateBackend) Create(context.Context, backend.CreateOpts) (string, error) {
-	return "", errors.New("boom")
+func (failUpBackend) Up(context.Context, backend.UpOpts) (backend.UpResult, error) {
+	return backend.UpResult{}, errors.New("boom")
 }
 
 func TestSpawnCleansUpCloneOnBackendFailure(t *testing.T) {
-	be := failCreateBackend{backend.NewFake()}
+	be := failUpBackend{backend.NewFake()}
 	f := &Fleet{Backend: be, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir()}
 	prof := agent.Profile{Name: "stub", Launch: `echo "{prompt}"`}
 	if _, err := f.Spawn(context.Background(), bareRepo(t), prof, "do the thing"); err == nil {
@@ -58,6 +58,37 @@ func TestSpawnCleansUpCloneOnBackendFailure(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Errorf("WorkRoot not empty after failed Spawn: %v", entries)
+	}
+}
+
+// failInjectBackend wraps a Fake but errors from CopyTo, to exercise Spawn's
+// post-provision cleanup (the container AND the clone must be removed).
+type failInjectBackend struct{ *backend.Fake }
+
+func (failInjectBackend) CopyTo(context.Context, string, string, string) error {
+	return errors.New("boom")
+}
+
+func TestSpawnCleansUpContainerAndCloneOnPostProvisionFailure(t *testing.T) {
+	fake := backend.NewFake()
+	be := failInjectBackend{fake}
+	f := &Fleet{Backend: be, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir()}
+	prof := agent.Profile{Name: "stub", Launch: `echo "{prompt}"`}
+	if _, err := f.Spawn(context.Background(), bareRepo(t), prof, "do"); err == nil {
+		t.Fatal("expected error when CopyTo fails after provisioning")
+	}
+	// Clone removed:
+	entries, err := os.ReadDir(f.WorkRoot)
+	if err != nil {
+		t.Fatalf("ReadDir(%q): %v", f.WorkRoot, err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("WorkRoot not empty after failed spawn: %v", entries)
+	}
+	// Container not left orphaned in the fleet:
+	got, _ := fake.List(context.Background(), nil)
+	if len(got) != 0 {
+		t.Errorf("container left behind after failed spawn: %+v", got)
 	}
 }
 

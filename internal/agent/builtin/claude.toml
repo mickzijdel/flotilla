@@ -1,9 +1,9 @@
 name = "claude"
-install = ""
+install = "npm i -g @anthropic-ai/claude-code"
 launch = 'claude --dangerously-skip-permissions -p "{prompt}"'
 setup = "builtin:claude"
 config_mounts = []
-env = ["ANTHROPIC_API_KEY"]
+env = ["CLAUDE_CODE_OAUTH_TOKEN"]
 transcript_path = "~/.claude/projects"
 egress_allow = ["api.anthropic.com"]
 done_signal = "process-exit"

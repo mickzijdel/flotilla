@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mickzijdel/flotilla/internal/agent"
 	"github.com/mickzijdel/flotilla/internal/backend"
+	"github.com/mickzijdel/flotilla/internal/feature"
 	"github.com/mickzijdel/flotilla/internal/gitops"
 	"github.com/mickzijdel/flotilla/internal/naming"
+	"github.com/mickzijdel/flotilla/internal/setup"
 )
 
 // Agent is a flotilla-managed agent as the engine sees it.
@@ -36,8 +39,9 @@ func (f *Fleet) workRoot() string {
 	return filepath.Join(homeDir(), ".flotilla", "work")
 }
 
-// Spawn clones repoURL engine-side, then creates+starts a container that runs
-// the profile's launch command on the mounted clone.
+// Spawn clones repoURL engine-side, provisions a devcontainer with the toolchain
+// Feature, injects the agent's token + config, installs the agent CLI, and
+// launches it. Git credentials never enter the container.
 func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, prompt string) (Agent, error) {
 	existing, err := f.List(ctx)
 	if err != nil {
@@ -54,13 +58,29 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		return Agent{}, err
 	}
 
-	const containerWork = "/workspace"
-	id, err := f.Backend.Create(ctx, backend.CreateOpts{
-		Name:    "flotilla-" + name,
-		Image:   f.BaseImage,
-		Cmd:     []string{"sh", "-c", prof.RenderLaunch(prompt)},
-		Workdir: containerWork,
-		Mounts:  []backend.Mount{{Source: dest, Target: containerWork}},
+	// Overlay the vendored toolchain Feature via `devcontainer up
+	// --additional-features`, on top of the repo's own devcontainer when present
+	// or a bundled default otherwise. The devcontainer CLI only resolves a *local*
+	// Feature when it lives in a sub-folder of the workspace's .devcontainer/ and
+	// is referenced by a path relative to that folder — so extract it there and
+	// reference it as "./flotilla-toolchain".
+	devDir := filepath.Join(dest, ".devcontainer")
+	if _, err := feature.Extract(devDir); err != nil {
+		_ = os.RemoveAll(dest)
+		return Agent{}, fmt.Errorf("extract feature: %w", err)
+	}
+	if !hasDevcontainer(dest) {
+		cfg := filepath.Join(devDir, "devcontainer.json")
+		if err := os.WriteFile(cfg, defaultDevcontainerJSON(f.BaseImage), 0o644); err != nil {
+			_ = os.RemoveAll(dest)
+			return Agent{}, fmt.Errorf("write default devcontainer: %w", err)
+		}
+	}
+
+	res, err := f.Backend.Up(ctx, backend.UpOpts{
+		Name:               name,
+		WorkspaceFolder:    dest,
+		AdditionalFeatures: map[string]any{"./flotilla-toolchain": map[string]any{}},
 		Labels: map[string]string{
 			backend.LabelAgent:   name,
 			backend.LabelRepo:    repoURL,
@@ -70,12 +90,46 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	})
 	if err != nil {
 		_ = os.RemoveAll(dest)
-		return Agent{}, fmt.Errorf("create container: %w", err)
+		return Agent{}, fmt.Errorf("provision container: %w", err)
 	}
-	if err := f.Backend.Start(ctx, id); err != nil {
+	id := res.ID
+	user := res.RemoteUser
+	if user == "" {
+		user = "root"
+	}
+	home := homeForUser(user)
+
+	inj := &injector{be: f.Backend, id: id, user: user}
+
+	// After provisioning, any failure must remove both the container and the clone
+	// so a failed spawn leaves no orphan (the container is labelled and would
+	// otherwise appear in List and hold the name).
+	fail := func(e error) (Agent, error) {
+		_ = f.Backend.Remove(ctx, id)
 		_ = os.RemoveAll(dest)
-		return Agent{}, fmt.Errorf("start container: %w", err)
+		return Agent{}, e
 	}
+
+	// 1) Secrets: resolved allowlist → 0600 env-file under the run user's home.
+	env := resolveEnv(prof.Env, os.LookupEnv)
+	if err := inj.WriteFile(ctx, envFileContent(env), agentEnvFile(home)); err != nil {
+		return fail(fmt.Errorf("inject secrets: %w", err))
+	}
+	// 2) Config: setup handler / declarative config_mounts, in the run user's home.
+	if err := setup.Run(ctx, inj, prof, home); err != nil {
+		return fail(fmt.Errorf("setup: %w", err))
+	}
+	// 3) Install the agent CLI as root (global npm needs root).
+	if strings.TrimSpace(prof.Install) != "" {
+		if err := f.Backend.Exec(ctx, id, []string{"sh", "-c", prof.Install}); err != nil {
+			return fail(fmt.Errorf("install agent: %w", err))
+		}
+	}
+	// 4) Launch the agent as the non-root run user, backgrounded (exec-into-idle).
+	if err := f.Backend.ExecDetached(ctx, id, runAsUser(user, launchScript(prof.RenderLaunch(prompt), home))); err != nil {
+		return fail(fmt.Errorf("launch agent: %w", err))
+	}
+
 	return Agent{Name: name, Repo: repoURL, Status: "running", Created: time.Now().UTC(), ID: id}, nil
 }
 

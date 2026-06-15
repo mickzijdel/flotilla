@@ -4,7 +4,7 @@ Flotilla is a manager for a fleet of sandboxed, containerized coding agents — 
 
 ## Status
 
-The walking skeleton is functional. The `flotilla` CLI can `spawn`, `list`, `attach`, `stop`, and `rm` agents, and list available `agents` profiles. It is backed by a local Docker backend and ships with `claude` and `codex` built-in agent profiles.
+The CLI lifecycle (spawn/list/attach/stop/rm) is functional, and a spawned agent is now actually runnable: the engine provisions the repo's devcontainer with a vendored toolchain Feature (`devcontainer up --additional-features`), injects the agent token via a `0600` env-file and config into the container, and launches the agent — with git credentials never entering the container. The egress firewall and submission/PR flow are still pending (see the backlog).
 
 ## Installation
 

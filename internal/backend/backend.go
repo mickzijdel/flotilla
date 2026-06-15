@@ -47,6 +47,21 @@ type AttachInfo struct {
 	VSCode      string
 }
 
+// UpOpts describes a devcontainer to provision (build + inject Feature + start,
+// idling). It replaces Create+Start for the agent path.
+type UpOpts struct {
+	Name               string
+	WorkspaceFolder    string         // engine clone dir → devcontainer --workspace-folder
+	AdditionalFeatures map[string]any // e.g. {"./flotilla-toolchain": {}} (relative to .devcontainer/)
+	Labels             map[string]string
+}
+
+// UpResult is the outcome of provisioning a devcontainer.
+type UpResult struct {
+	ID         string
+	RemoteUser string
+}
+
 // Backend abstracts the compute substrate (local Docker for v1).
 type Backend interface {
 	Create(ctx context.Context, opts CreateOpts) (string, error)
@@ -56,4 +71,7 @@ type Backend interface {
 	Exec(ctx context.Context, id string, cmd []string) error
 	List(ctx context.Context, labelFilter map[string]string) ([]Container, error)
 	AttachInfo(ctx context.Context, id string) (AttachInfo, error)
+	Up(ctx context.Context, opts UpOpts) (UpResult, error)
+	ExecDetached(ctx context.Context, id string, cmd []string) error
+	CopyTo(ctx context.Context, id, hostPath, destPath string) error
 }
