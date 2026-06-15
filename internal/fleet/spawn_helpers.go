@@ -3,13 +3,47 @@ package fleet
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 )
 
-// agentEnvFile is where the injected secret env-file lands in the container.
-const agentEnvFile = "/run/flotilla/agent.env"
+// homeForUser returns the container home directory for a run user.
+func homeForUser(user string) string {
+	if user == "" || user == "root" {
+		return "/root"
+	}
+	return "/home/" + user
+}
+
+// agentEnvFile is where the injected secret env-file lands, under the run user's home.
+func agentEnvFile(home string) string {
+	return path.Join(home, ".flotilla", "agent.env")
+}
+
+// runAsUser wraps a shell script to run as user via su; root/"" run it directly.
+func runAsUser(user, script string) []string {
+	if user == "" || user == "root" {
+		return []string{"sh", "-c", script}
+	}
+	return []string{"su", user, "-c", script}
+}
+
+// launchScript cd's into the mounted workspace, sets HOME, sources the injected
+// env-file, then execs the agent launch. Run via runAsUser so the agent (which
+// refuses --dangerously-skip-permissions as root) runs as the non-root user.
+func launchScript(launch, home string) string {
+	return fmt.Sprintf(
+		`cd "$(ls -d /workspaces/*/ 2>/dev/null | head -1)" 2>/dev/null; export HOME=%s; set -a; . %s 2>/dev/null; set +a; exec %s`,
+		home, agentEnvFile(home), launch)
+}
+
+// defaultDevcontainerJSON is the bundled config used when a repo ships none. It
+// pins a non-root remoteUser so the agent does not run as root.
+func defaultDevcontainerJSON(baseImage string) []byte {
+	return []byte(fmt.Sprintf("{\n  \"name\": \"flotilla-default\",\n  \"image\": %q,\n  \"overrideCommand\": true,\n  \"remoteUser\": \"ubuntu\"\n}\n", baseImage))
+}
 
 // resolveEnv returns the subset of allowlisted keys present in the environment.
 // Only named keys can enter the container — the allowlist is the boundary.
@@ -35,22 +69,6 @@ func envFileContent(env map[string]string) []byte {
 		fmt.Fprintf(&b, "%s=%s\n", k, env[k])
 	}
 	return []byte(b.String())
-}
-
-// launchWrapper cd's into the container's mounted workspace, sources the
-// injected env-file, then execs the agent launch. The workspace is the single
-// directory devcontainer mounts under /workspaces, resolved at run time so the
-// agent operates on the repo regardless of its name.
-func launchWrapper(launch string) []string {
-	script := fmt.Sprintf(
-		`cd "$(ls -d /workspaces/*/ 2>/dev/null | head -1)" 2>/dev/null; set -a; . %s 2>/dev/null; set +a; exec %s`,
-		agentEnvFile, launch)
-	return []string{"sh", "-c", script}
-}
-
-// defaultDevcontainerJSON is the bundled config used when a repo ships none.
-func defaultDevcontainerJSON(baseImage string) []byte {
-	return []byte(fmt.Sprintf("{\n  \"name\": \"flotilla-default\",\n  \"image\": %q,\n  \"overrideCommand\": true\n}\n", baseImage))
 }
 
 // hasDevcontainer reports whether dir already ships a devcontainer config.

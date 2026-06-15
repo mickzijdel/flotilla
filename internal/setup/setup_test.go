@@ -32,27 +32,27 @@ func (r *recInjector) WriteFile(_ context.Context, content []byte, destPath stri
 
 func TestClaudeSetupWritesSettingsAndMakesDir(t *testing.T) {
 	r := newRec()
-	if err := Run(context.Background(), r, agent.Profile{Setup: "builtin:claude"}); err != nil {
+	if err := Run(context.Background(), r, agent.Profile{Setup: "builtin:claude"}, "/home/ubuntu"); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if _, ok := r.writes["/root/.claude/settings.json"]; !ok {
+	if _, ok := r.writes["/home/ubuntu/.claude/settings.json"]; !ok {
 		t.Errorf("expected settings.json write, writes=%v", r.writes)
 	}
 	foundMkdir := false
 	for _, c := range r.execs {
-		if len(c) >= 3 && c[0] == "mkdir" && c[2] == "/root/.claude" {
+		if len(c) >= 3 && c[0] == "mkdir" && c[2] == "/home/ubuntu/.claude" {
 			foundMkdir = true
 		}
 	}
 	if !foundMkdir {
-		t.Errorf("expected mkdir -p /root/.claude, execs=%v", r.execs)
+		t.Errorf("expected mkdir -p /home/ubuntu/.claude, execs=%v", r.execs)
 	}
 }
 
 func TestDeclarativeCopiesConfigMounts(t *testing.T) {
 	r := newRec()
 	prof := agent.Profile{Setup: "declarative", ConfigMounts: []string{"/etc/hostcfg:/root/.cfg"}}
-	if err := Run(context.Background(), r, prof); err != nil {
+	if err := Run(context.Background(), r, prof, "/home/ubuntu"); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if len(r.copies) != 1 || r.copies[0] != [2]string{"/etc/hostcfg", "/root/.cfg"} {
@@ -61,7 +61,7 @@ func TestDeclarativeCopiesConfigMounts(t *testing.T) {
 }
 
 func TestUnknownSetupHandlerErrors(t *testing.T) {
-	err := Run(context.Background(), newRec(), agent.Profile{Setup: "builtin:nope"})
+	err := Run(context.Background(), newRec(), agent.Profile{Setup: "builtin:nope"}, "/home/ubuntu")
 	if err == nil || !strings.Contains(err.Error(), "unknown setup handler") {
 		t.Errorf("want unknown-handler error, got %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/mickzijdel/flotilla/internal/backend"
 )
@@ -12,12 +13,13 @@ import (
 // routed through the backend's CopyTo (`docker cp`), never via argv, and the
 // destination's parent dir is created first.
 type injector struct {
-	be backend.Backend
-	id string
+	be   backend.Backend
+	id   string
+	user string
 }
 
 func (j *injector) Exec(ctx context.Context, cmd []string) error {
-	return j.be.Exec(ctx, j.id, cmd)
+	return j.be.Exec(ctx, j.id, runAsUser(j.user, strings.Join(cmd, " ")))
 }
 
 func (j *injector) CopyTo(ctx context.Context, hostPath, destPath string) error {
@@ -56,5 +58,5 @@ func (j *injector) mkdirParent(ctx context.Context, destPath string) error {
 	if dir == "" || dir == "." || dir == "/" {
 		return nil
 	}
-	return j.be.Exec(ctx, j.id, []string{"mkdir", "-p", dir})
+	return j.Exec(ctx, []string{"mkdir", "-p", dir})
 }

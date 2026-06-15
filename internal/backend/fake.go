@@ -24,6 +24,7 @@ type Fake struct {
 	UpCalls       []UpOpts
 	DetachedCalls [][]string
 	CopyCalls     []CopyCall
+	RemoteUser    string // returned by Up (default "" → caller treats as root)
 }
 
 func NewFake() *Fake { return &Fake{items: map[string]*Container{}} }
@@ -104,7 +105,7 @@ func matches(labels, filter map[string]string) bool {
 	return true
 }
 
-func (f *Fake) Up(_ context.Context, o UpOpts) (string, error) {
+func (f *Fake) Up(_ context.Context, o UpOpts) (UpResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.UpCalls = append(f.UpCalls, o)
@@ -118,7 +119,7 @@ func (f *Fake) Up(_ context.Context, o UpOpts) (string, error) {
 		Created: time.Unix(int64(f.seq), 0).UTC(),
 		Labels:  o.Labels,
 	}
-	return id, nil
+	return UpResult{ID: id, RemoteUser: f.RemoteUser}, nil
 }
 
 func (f *Fake) ExecDetached(_ context.Context, id string, cmd []string) error {

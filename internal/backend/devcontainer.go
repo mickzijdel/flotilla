@@ -22,13 +22,13 @@ func devcontainer(ctx context.Context, args ...string) (string, error) {
 
 // Up provisions the repo's devcontainer (auto-discovered from the workspace's
 // .devcontainer/, or a bundled default the engine wrote there), overlays the
-// additional Features, and returns the container ID.
-func (d *dockerBackend) Up(ctx context.Context, o UpOpts) (string, error) {
+// additional Features, and returns the container ID + remote user.
+func (d *dockerBackend) Up(ctx context.Context, o UpOpts) (UpResult, error) {
 	args := []string{"up", "--workspace-folder", o.WorkspaceFolder}
 	if len(o.AdditionalFeatures) > 0 {
 		b, err := json.Marshal(o.AdditionalFeatures)
 		if err != nil {
-			return "", fmt.Errorf("marshal additional-features: %w", err)
+			return UpResult{}, fmt.Errorf("marshal additional-features: %w", err)
 		}
 		args = append(args, "--additional-features", string(b))
 	}
@@ -37,17 +37,21 @@ func (d *dockerBackend) Up(ctx context.Context, o UpOpts) (string, error) {
 	}
 	out, err := devcontainer(ctx, args...)
 	if err != nil {
-		return "", err
+		return UpResult{}, err
 	}
-	if id := containerIDFromUp(out); id != "" {
-		return id, nil
+	if res := upResultFromOutput(out); res.ID != "" {
+		return res, nil
 	}
-	// Fallback: resolve by the agent label we just applied.
-	return run(ctx, "ps", "-aq", "--no-trunc", "--filter", "status=running", "--filter", "label="+LabelAgent+"="+o.Labels[LabelAgent])
+	// Fallback: resolve by the agent label we just applied (remote user unknown).
+	id, err := run(ctx, "ps", "-aq", "--no-trunc", "--filter", "status=running", "--filter", "label="+LabelAgent+"="+o.Labels[LabelAgent])
+	if err != nil {
+		return UpResult{}, err
+	}
+	return UpResult{ID: id}, nil
 }
 
-// containerIDFromUp parses the trailing JSON line devcontainer up emits.
-func containerIDFromUp(out string) string {
+// upResultFromOutput parses the trailing JSON line devcontainer up emits.
+func upResultFromOutput(out string) UpResult {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(lines[i])
@@ -56,12 +60,13 @@ func containerIDFromUp(out string) string {
 		}
 		var r struct {
 			ContainerID string `json:"containerId"`
+			RemoteUser  string `json:"remoteUser"`
 		}
 		if err := json.Unmarshal([]byte(line), &r); err == nil && r.ContainerID != "" {
-			return r.ContainerID
+			return UpResult{ID: r.ContainerID, RemoteUser: r.RemoteUser}
 		}
 	}
-	return ""
+	return UpResult{}
 }
 
 // ExecDetached runs cmd in the container without waiting (the backgrounded launch).

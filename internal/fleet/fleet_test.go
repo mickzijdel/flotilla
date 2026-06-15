@@ -40,8 +40,8 @@ func bareRepo(t *testing.T) string {
 // clone-cleanup-on-failure path.
 type failUpBackend struct{ *backend.Fake }
 
-func (failUpBackend) Up(context.Context, backend.UpOpts) (string, error) {
-	return "", errors.New("boom")
+func (failUpBackend) Up(context.Context, backend.UpOpts) (backend.UpResult, error) {
+	return backend.UpResult{}, errors.New("boom")
 }
 
 func TestSpawnCleansUpCloneOnBackendFailure(t *testing.T) {

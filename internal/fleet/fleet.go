@@ -77,7 +77,7 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		}
 	}
 
-	id, err := f.Backend.Up(ctx, backend.UpOpts{
+	res, err := f.Backend.Up(ctx, backend.UpOpts{
 		Name:               name,
 		WorkspaceFolder:    dest,
 		AdditionalFeatures: map[string]any{"./flotilla-toolchain": map[string]any{}},
@@ -92,8 +92,14 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		_ = os.RemoveAll(dest)
 		return Agent{}, fmt.Errorf("provision container: %w", err)
 	}
+	id := res.ID
+	user := res.RemoteUser
+	if user == "" {
+		user = "root"
+	}
+	home := homeForUser(user)
 
-	inj := &injector{be: f.Backend, id: id}
+	inj := &injector{be: f.Backend, id: id, user: user}
 
 	// After provisioning, any failure must remove both the container and the clone
 	// so a failed spawn leaves no orphan (the container is labelled and would
@@ -104,23 +110,23 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		return Agent{}, e
 	}
 
-	// 1) Secrets: resolved allowlist → 0600 env-file → container (no git creds).
+	// 1) Secrets: resolved allowlist → 0600 env-file under the run user's home.
 	env := resolveEnv(prof.Env, os.LookupEnv)
-	if err := inj.WriteFile(ctx, envFileContent(env), agentEnvFile); err != nil {
+	if err := inj.WriteFile(ctx, envFileContent(env), agentEnvFile(home)); err != nil {
 		return fail(fmt.Errorf("inject secrets: %w", err))
 	}
-	// 2) Config: setup handler / declarative config_mounts.
-	if err := setup.Run(ctx, inj, prof); err != nil {
+	// 2) Config: setup handler / declarative config_mounts, in the run user's home.
+	if err := setup.Run(ctx, inj, prof, home); err != nil {
 		return fail(fmt.Errorf("setup: %w", err))
 	}
-	// 3) Install the agent CLI.
+	// 3) Install the agent CLI as root (global npm needs root).
 	if strings.TrimSpace(prof.Install) != "" {
 		if err := f.Backend.Exec(ctx, id, []string{"sh", "-c", prof.Install}); err != nil {
 			return fail(fmt.Errorf("install agent: %w", err))
 		}
 	}
-	// 4) Launch the agent, backgrounded (exec-into-idle).
-	if err := f.Backend.ExecDetached(ctx, id, launchWrapper(prof.RenderLaunch(prompt))); err != nil {
+	// 4) Launch the agent as the non-root run user, backgrounded (exec-into-idle).
+	if err := f.Backend.ExecDetached(ctx, id, runAsUser(user, launchScript(prof.RenderLaunch(prompt), home))); err != nil {
 		return fail(fmt.Errorf("launch agent: %w", err))
 	}
 

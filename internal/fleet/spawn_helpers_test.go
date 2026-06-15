@@ -28,16 +28,39 @@ func TestEnvFileContentSortedKV(t *testing.T) {
 	}
 }
 
-func TestLaunchWrapperSourcesEnvFileThenExecs(t *testing.T) {
-	got := launchWrapper(`claude -p "hi"`)
-	if len(got) != 3 || got[0] != "sh" || got[1] != "-c" {
-		t.Fatalf("launchWrapper shape = %v", got)
+func TestLaunchScriptSourcesEnvFileThenExecs(t *testing.T) {
+	got := launchScript(`claude -p "hi"`, "/home/ubuntu")
+	if !strings.Contains(got, agentEnvFile("/home/ubuntu")) {
+		t.Errorf("launchScript should source the env-file: %q", got)
 	}
-	if !strings.Contains(got[2], agentEnvFile) || !strings.Contains(got[2], `exec claude -p "hi"`) {
-		t.Errorf("launchWrapper script = %q", got[2])
+	if !strings.Contains(got, `exec claude -p "hi"`) {
+		t.Errorf("launchScript should exec the launch: %q", got)
 	}
-	if !strings.Contains(got[2], "/workspaces/") {
-		t.Errorf("launchWrapper should cd into the mounted workspace: %q", got[2])
+	if !strings.Contains(got, "/workspaces/") {
+		t.Errorf("launchScript should cd into the mounted workspace: %q", got)
+	}
+	if !strings.Contains(got, "export HOME=/home/ubuntu") {
+		t.Errorf("launchScript should set HOME: %q", got)
+	}
+}
+
+func TestHomeForUser(t *testing.T) {
+	for _, c := range []struct{ user, want string }{
+		{"root", "/root"}, {"", "/root"}, {"ubuntu", "/home/ubuntu"},
+	} {
+		if got := homeForUser(c.user); got != c.want {
+			t.Errorf("homeForUser(%q) = %q, want %q", c.user, got, c.want)
+		}
+	}
+}
+
+func TestRunAsUser(t *testing.T) {
+	if got := runAsUser("root", "echo hi"); len(got) != 3 || got[0] != "sh" {
+		t.Errorf("runAsUser(root) = %v, want sh -c", got)
+	}
+	got := runAsUser("ubuntu", "echo hi")
+	if len(got) != 4 || got[0] != "su" || got[1] != "ubuntu" || got[2] != "-c" || got[3] != "echo hi" {
+		t.Errorf("runAsUser(ubuntu) = %v, want [su ubuntu -c echo hi]", got)
 	}
 }
 
@@ -49,6 +72,9 @@ func TestDefaultDevcontainerJSONIsValidWithImage(t *testing.T) {
 	}
 	if m["image"] != "ubuntu:24.04" {
 		t.Errorf("image = %v", m["image"])
+	}
+	if m["remoteUser"] != "ubuntu" {
+		t.Errorf("remoteUser = %v", m["remoteUser"])
 	}
 }
 

@@ -15,13 +15,14 @@ func devcontainerAvailable() bool {
 	return err == nil
 }
 
-func TestContainerIDFromUpParsesTrailingJSON(t *testing.T) {
-	out := "Building...\nsome log line\n{\"outcome\":\"success\",\"containerId\":\"abc123\",\"remoteUser\":\"root\"}\n"
-	if got := containerIDFromUp(out); got != "abc123" {
-		t.Errorf("containerIDFromUp = %q, want abc123", got)
+func TestUpResultFromOutputParsesTrailingJSON(t *testing.T) {
+	out := "Building...\nsome log line\n{\"outcome\":\"success\",\"containerId\":\"abc123\",\"remoteUser\":\"ubuntu\"}\n"
+	got := upResultFromOutput(out)
+	if got.ID != "abc123" || got.RemoteUser != "ubuntu" {
+		t.Errorf("upResultFromOutput = %+v, want {abc123 ubuntu}", got)
 	}
-	if got := containerIDFromUp("no json here"); got != "" {
-		t.Errorf("containerIDFromUp = %q, want empty", got)
+	if got := upResultFromOutput("no json here"); got.ID != "" {
+		t.Errorf("upResultFromOutput = %+v, want empty", got)
 	}
 }
 

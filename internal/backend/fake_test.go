@@ -48,7 +48,7 @@ func TestFakeLifecycle(t *testing.T) {
 func TestFakeUpRecordsOptsAndRuns(t *testing.T) {
 	ctx := context.Background()
 	f := NewFake()
-	id, err := f.Up(ctx, UpOpts{
+	res, err := f.Up(ctx, UpOpts{
 		Name:               "atlas",
 		WorkspaceFolder:    "/work/atlas",
 		AdditionalFeatures: map[string]any{"/feat/flotilla-toolchain": map[string]any{}},
@@ -57,6 +57,9 @@ func TestFakeUpRecordsOptsAndRuns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Up: %v", err)
 	}
+	if res.ID == "" {
+		t.Fatalf("Up returned empty id")
+	}
 	if len(f.UpCalls) != 1 || f.UpCalls[0].WorkspaceFolder != "/work/atlas" {
 		t.Fatalf("UpCalls = %+v", f.UpCalls)
 	}
@@ -64,7 +67,6 @@ func TestFakeUpRecordsOptsAndRuns(t *testing.T) {
 	if len(got) != 1 || got[0].Status != "running" {
 		t.Fatalf("List = %+v, want one running", got)
 	}
-	_ = id
 }
 
 func TestFakeExecDetachedAndCopyToRecord(t *testing.T) {
