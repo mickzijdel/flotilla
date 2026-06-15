@@ -11,6 +11,11 @@ const (
 	LabelRepo    = "flotilla.repo"
 	LabelCreated = "flotilla.created"
 	LabelHost    = "flotilla.host"
+	// LabelProxy marks a per-agent egress proxy sidecar (value = agent name).
+	// Proxy containers also carry LabelAgent so the docker backend's always-on
+	// flotilla.agent scope can find them, so the fleet layer must exclude
+	// LabelProxy-tagged containers from agent listings/resolution.
+	LabelProxy = "flotilla.proxy"
 )
 
 // Mount is a host->container bind mount.

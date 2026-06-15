@@ -168,6 +168,9 @@ func (f *Fleet) List(ctx context.Context) ([]Agent, error) {
 	}
 	out := make([]Agent, 0, len(cs))
 	for _, c := range cs {
+		if c.Labels[backend.LabelProxy] != "" {
+			continue // egress proxy sidecar, not an agent
+		}
 		out = append(out, Agent{Name: c.Name, Repo: c.Repo, Status: c.Status, Created: c.Created, ID: c.ID})
 	}
 	return out, nil
@@ -179,10 +182,12 @@ func (f *Fleet) resolve(ctx context.Context, name string) (backend.Container, er
 	if err != nil {
 		return backend.Container{}, err
 	}
-	if len(cs) == 0 {
-		return backend.Container{}, fmt.Errorf("no agent named %q", name)
+	for _, c := range cs {
+		if c.Labels[backend.LabelProxy] == "" {
+			return c, nil // the agent container, not its proxy sidecar
+		}
 	}
-	return cs[0], nil
+	return backend.Container{}, fmt.Errorf("no agent named %q", name)
 }
 
 // Attach returns attach info for a named agent.
@@ -200,7 +205,7 @@ func (f *Fleet) Stop(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if proxies, err := f.Backend.List(ctx, map[string]string{"flotilla.proxy": name}); err == nil {
+	if proxies, err := f.Backend.List(ctx, map[string]string{backend.LabelProxy: name}); err == nil {
 		for _, p := range proxies {
 			_ = f.Backend.Stop(ctx, p.ID)
 		}

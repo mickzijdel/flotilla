@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/mickzijdel/flotilla/internal/backend"
 	"github.com/mickzijdel/flotilla/internal/egress"
@@ -13,6 +14,15 @@ import (
 const ProxyImage = "ubuntu/squid@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029"
 
 const proxyPort = 3128
+
+// Liveness settle for the proxy after start: squid validates its config on
+// startup and exits within ~1s on a bad allowlist, so we watch the container
+// for a short window before trusting it. Overridden to a single immediate check
+// in tests.
+var (
+	proxyLivenessChecks   = 12
+	proxyLivenessInterval = 250 * time.Millisecond
+)
 
 func proxyName(agent string) string { return "flotilla-proxy-" + agent }
 func netName(agent string) string   { return "flotilla-net-" + agent }
@@ -80,7 +90,7 @@ func setupFirewall(ctx context.Context, be backend.Backend, agentID, agentName s
 		Image:   ProxyImage,
 		Network: "bridge",
 		Mounts:  []backend.Mount{{Source: confPath, Target: "/etc/squid/squid.conf"}},
-		Labels:  map[string]string{"flotilla.proxy": agentName, backend.LabelAgent: agentName},
+		Labels:  map[string]string{backend.LabelProxy: agentName, backend.LabelAgent: agentName},
 	})
 	if err != nil {
 		return fail(fmt.Errorf("create proxy: %w", err))
@@ -90,6 +100,14 @@ func setupFirewall(ctx context.Context, be backend.Backend, agentID, agentName s
 	}
 	if err := be.NetworkConnect(ctx, netName(agentName), proxyID); err != nil {
 		return fail(fmt.Errorf("attach proxy to internal net: %w", err))
+	}
+
+	// Confirm the proxy actually stayed up before confining the agent: a squid
+	// that crashes on a bad config exits non-zero but `start` already returned,
+	// so without this the agent would be swapped onto a dead proxy (no egress,
+	// no error). Checking here keeps the agent on the bridge if the proxy died.
+	if err := waitProxyRunning(ctx, be, agentName); err != nil {
+		return fail(err)
 	}
 
 	// Swap the agent: join the internal net, leave the bridge → its only route
@@ -103,9 +121,31 @@ func setupFirewall(ctx context.Context, be backend.Backend, agentID, agentName s
 	return nil
 }
 
+// waitProxyRunning watches the per-agent proxy over a short settle window and
+// errors if it is missing or has exited (a crashed squid), so the caller can
+// fail the spawn instead of confining the agent to a dead proxy.
+func waitProxyRunning(ctx context.Context, be backend.Backend, agentName string) error {
+	for i := 0; ; i++ {
+		cs, err := be.List(ctx, map[string]string{backend.LabelProxy: agentName})
+		if err != nil {
+			return fmt.Errorf("inspect proxy: %w", err)
+		}
+		if len(cs) == 0 {
+			return fmt.Errorf("egress proxy %q not found after start", proxyName(agentName))
+		}
+		if cs[0].Status != "running" {
+			return fmt.Errorf("egress proxy %q is %s (squid likely rejected the allowlist; check `docker logs %s`)", proxyName(agentName), cs[0].Status, proxyName(agentName))
+		}
+		if i >= proxyLivenessChecks {
+			return nil
+		}
+		time.Sleep(proxyLivenessInterval)
+	}
+}
+
 // teardownFirewall removes the per-agent proxy + network (best-effort, idempotent).
 func teardownFirewall(ctx context.Context, be backend.Backend, agentName string) {
-	if c, err := be.List(ctx, map[string]string{"flotilla.proxy": agentName}); err == nil {
+	if c, err := be.List(ctx, map[string]string{backend.LabelProxy: agentName}); err == nil {
 		for _, p := range c {
 			_ = be.Remove(ctx, p.ID)
 		}

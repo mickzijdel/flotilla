@@ -144,6 +144,36 @@ func TestSpawnClonesAndCreatesContainer(t *testing.T) {
 	}
 }
 
+func TestListExcludesEgressProxyContainers(t *testing.T) {
+	fake := backend.NewFake()
+	ctx := context.Background()
+	_, _ = fake.Create(ctx, backend.CreateOpts{Labels: map[string]string{backend.LabelAgent: "atlas", backend.LabelRepo: "r"}})
+	_, _ = fake.Create(ctx, backend.CreateOpts{Labels: map[string]string{backend.LabelAgent: "atlas", backend.LabelProxy: "atlas"}})
+	f := &Fleet{Backend: fake}
+	agents, err := f.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(agents) != 1 {
+		t.Fatalf("want 1 agent (proxy excluded), got %d: %+v", len(agents), agents)
+	}
+}
+
+func TestResolveSkipsEgressProxy(t *testing.T) {
+	fake := backend.NewFake()
+	ctx := context.Background()
+	proxyID, _ := fake.Create(ctx, backend.CreateOpts{Labels: map[string]string{backend.LabelAgent: "atlas", backend.LabelProxy: "atlas"}})
+	agentID, _ := fake.Create(ctx, backend.CreateOpts{Labels: map[string]string{backend.LabelAgent: "atlas", backend.LabelRepo: "r"}})
+	f := &Fleet{Backend: fake}
+	c, err := f.resolve(ctx, "atlas")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if c.ID == proxyID || c.ID != agentID {
+		t.Errorf("resolve = %s, want agent %s (not proxy %s)", c.ID, agentID, proxyID)
+	}
+}
+
 func TestSpawnSetsUpFirewallAndProxyEnv(t *testing.T) {
 	fake := backend.NewFake()
 	f := &Fleet{Backend: fake, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir(), EgressFirewall: true}
