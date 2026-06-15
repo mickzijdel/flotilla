@@ -9,36 +9,30 @@ and [the skeleton plan](plans/2026-06-14-flotilla-engine-skeleton.md) for what's
 
 Roughly in dependency order:
 
-1. **devcontainer.json + Feature overlay + credential/config injection.** Highest value next —
-   it's what makes a spawned agent *actually runnable*. Build via `devcontainer up
-   --additional-features` to inject the agent Feature; wire the profile's `Env` (API keys),
-   `Install`, `Setup` handlers, and `config_mounts` so the container has what it needs to run.
-   Keep the credential-isolation invariant: secrets go in as env/mounts the agent needs, but git
-   credentials still never enter the container (engine does all remote git ops).
-2. **Egress firewall** — default-deny egress with a per-profile `EgressAllow` allowlist
+- ~~**devcontainer.json + Feature overlay + credential/config injection.**~~ **Done** — see
+  [plan](plans/2026-06-15-flotilla-devcontainer-injection.md) and
+  [spec](specs/2026-06-15-flotilla-devcontainer-injection-design.md).
+1. **Egress firewall** — default-deny egress with a per-profile `EgressAllow` allowlist
    (global default + per-project override). Compact code → small default budget.
-3. **Submission flow** — push/PR only (agents never push to protected branches directly), plus the
+2. **Submission flow** — push/PR only (agents never push to protected branches directly), plus the
    `DoneSignal` handling so the engine knows when an agent finished.
-4. **Logs / transcript mounts** — persist per-session logs + the agent transcript
+3. **Logs / transcript mounts** — persist per-session logs + the agent transcript
    (`TranscriptPath`) to a host dir under `~/.flotilla`, with a good date+repo naming convention;
    consider a mounted read-only volume for live inspection.
-5. **On-demand fetch/pull** — let a running agent request the engine re-fetch/pull during a session
+4. **On-demand fetch/pull** — let a running agent request the engine re-fetch/pull during a session
    (engine-side, no creds in container).
-6. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
+5. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
    CLI is the primary control surface; the skill sits on top).
-7. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
-8. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
+6. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
+7. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
    is already in place. Docker Sandboxes / `sbx` could be added as an additional backend once it
    lands on Linux (see spec §7).
 
 ## Known issues / robustness (surfaced in the skeleton's final review — deferred, not blocking)
 
-- **`Env`/`Install`/`config_mounts` declared but not wired** (`internal/fleet/fleet.go` `Spawn`).
-  Only `Launch` is consumed today, so a spawned `claude`/`codex` container has no API key and no
-  install step — it exits immediately. Expected for the skeleton; resolved by next-plan #1.
-- **README oversells "functional."** `README.md` `## Status` says the skeleton is functional;
-  true for the lifecycle (spawn/list/attach/stop/rm), but an agent can't actually *run* until
-  next-plan #1 lands. Tighten the wording, or add a one-line caveat.
+- **README oversells "functional."** `README.md` `## Status` is now more accurate: the lifecycle
+  (spawn/list/attach/stop/rm) **and** a runnable agent (devcontainer + injection) work. Egress
+  firewall and submission/PR flow are still pending (next plans #1 and #2).
 - **No LICENSE.** README notes "all rights reserved pending a decision." Pick a license.
 - **Prompt → `sh -c` shell-quoting hazard** (`internal/agent/profile.go` `RenderLaunch`). The
   prompt is interpolated verbatim into the launch template run via `sh -c`; a prompt with shell
@@ -53,9 +47,6 @@ Roughly in dependency order:
 
 ## Test-coverage gaps to close as features land
 
-- No test pins the credential-isolation invariant. **When `Env` wiring lands (next-plan #1), add a
-  fleet test asserting the spawned `CreateOpts` carries no git credentials** — so a future change
-  can't silently leak creds into the container.
 - `parseLabels` / `parseDockerTime` are only covered via the live Docker integration path; add unit
   tests with sample `docker ps` JSON.
 
