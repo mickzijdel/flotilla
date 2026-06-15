@@ -51,10 +51,11 @@ performs all remote git operations.
 - The container's main process is the devcontainer's own idle loop (devcontainer up keeps it
   running by default). The agent is **not** PID 1; it is a backgrounded exec. Consequently "is the
   agent done?" cannot be read from container state in this slice — that is next-plan #3 by design.
-- All agent-related execs (install, setup, launch) run **as root** inside the container. The box is
-  the blast radius; running as root keeps the agent's home paths (`/root/.claude`, `/root/.codex`)
-  consistent between config injection and the launched process. The repo's own devcontainer may run
-  *its* app as a non-root `remoteUser`; that is independent of how the agent runs.
+- **Run user (revised — see §14).** The agent **setup** and **launch** run as the devcontainer's
+  non-root `remoteUser` (the default config pins `ubuntu`), because Claude Code refuses
+  `--dangerously-skip-permissions` as root. The **install** step stays root (global `npm` needs it).
+  The secret env-file and the agent's config home (`~/.claude`/`~/.codex`) therefore live under the
+  run user's home (`/home/<user>/…`) and are chowned to the run user after `docker cp`.
 
 ## 4. Backend interface changes
 
@@ -247,9 +248,21 @@ refine §5–§6:
   into it (resolved via a `/workspaces/*` glob) so the agent operates on the repo.
 - **Secret transport.** The `docker cp` `0600` env-file (decision #3 primary) works as designed and
   reaches the detached launch; `--secrets-file` was not needed.
-- **End-to-end verified** on `octocat/Hello-World` (no repo devcontainer): toolchain Feature installs
-  node/git, the agent CLI installs, `~/.claude` is assembled, the token env-file lands `0600`, the
-  workspace is mounted, and **no git credentials are present in the container**. The only step not
-  exercised without a `CLAUDE_CODE_OAUTH_TOKEN` is the agent producing real output.
+- **Run as non-root.** Claude Code refuses `--dangerously-skip-permissions` as root (the engine's
+  first cut ran everything as root). Fix: the default devcontainer pins `remoteUser: "ubuntu"`,
+  `Backend.Up` returns the `remoteUser`, and the engine runs **setup** + **launch** as that user
+  (via `su <user> -c`) while keeping **install** as root (global `npm`). The secret env-file
+  (`<home>/.flotilla/agent.env`) and `~/.claude` live under the run user's home and are chowned to
+  the run user after `docker cp` (so ownership is correct regardless of the host source uid). This
+  matches Anthropic's own recommendation (run Claude Code as a non-root user in a dev container);
+  the `IS_SANDBOX=1` root-bypass was rejected as undocumented, Claude-specific, and flaky across
+  versions.
+- **End-to-end verified** on `octocat/Hello-World` (no repo devcontainer), via a real
+  `fnox exec -- flotilla spawn … --agent claude`: the toolchain Feature installs node/git, the agent
+  CLI installs, `~/.claude` is assembled, the `CLAUDE_CODE_OAUTH_TOKEN` env-file lands `0600`, the
+  workspace is mounted, the agent runs **as `ubuntu`** and autonomously **created the requested
+  file** (owned `ubuntu:ubuntu`), and **no git credentials are present in the container**.
+  `CLAUDE_CODE_OAUTH_TOKEN` is stored globally in fnox (`bws-general` provider) so `flotilla` picks
+  it up from the host env.
 - **New robustness items** (stale work-dir orphan collision; root `.devcontainer.json` form;
   `/workspaces/*` glob; no Feature caching) are captured in [the backlog](../backlog.md).
