@@ -43,6 +43,20 @@ func TestRenderLaunchSubstitutesPrompt(t *testing.T) {
 	}
 }
 
+func TestClaudeBuiltinUsesOAuthTokenAndNpmInstall(t *testing.T) {
+	got, err := Builtins()
+	if err != nil {
+		t.Fatalf("Builtins: %v", err)
+	}
+	c := got["claude"]
+	if len(c.Env) != 1 || c.Env[0] != "CLAUDE_CODE_OAUTH_TOKEN" {
+		t.Errorf("claude Env = %v, want [CLAUDE_CODE_OAUTH_TOKEN]", c.Env)
+	}
+	if c.Install == "" {
+		t.Errorf("claude Install is empty; want an npm install command")
+	}
+}
+
 func keys(m map[string]Profile) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
