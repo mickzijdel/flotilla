@@ -55,10 +55,10 @@ func Builtins() (map[string]Profile, error) {
 	return out, err
 }
 
-// RenderLaunch substitutes the {prompt} placeholder in the launch template.
-// The prompt is interpolated verbatim and the result is run via `sh -c`, so a
-// prompt containing shell metacharacters can break or alter the command;
-// passing the prompt out-of-band is a future improvement.
-func (p Profile) RenderLaunch(prompt string) string {
-	return strings.ReplaceAll(p.Launch, "{prompt}", prompt)
+// RenderLaunch substitutes the {prompt} placeholder with a reference to the
+// $FLOTILLA_PROMPT environment variable. The actual prompt is passed out-of-band
+// (written to a file and loaded into that env var by the launch wrapper), so a
+// prompt with shell metacharacters can never break or alter the command.
+func (p Profile) RenderLaunch() string {
+	return strings.ReplaceAll(p.Launch, "{prompt}", "$FLOTILLA_PROMPT")
 }

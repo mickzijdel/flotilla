@@ -118,6 +118,11 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	if err := inj.WriteFile(ctx, envFileContent(env), agentEnvFile(home)); err != nil {
 		return fail(fmt.Errorf("inject secrets: %w", err))
 	}
+	// Prompt: written out-of-band (file via docker cp, never argv) and loaded
+	// into $FLOTILLA_PROMPT by the launch wrapper, so metacharacters are inert.
+	if err := inj.WriteFile(ctx, []byte(prompt), agentPromptFile(home)); err != nil {
+		return fail(fmt.Errorf("inject prompt: %w", err))
+	}
 	// 2) Config: setup handler / declarative config_mounts, in the run user's home.
 	if err := setup.Run(ctx, inj, prof, home); err != nil {
 		return fail(fmt.Errorf("setup: %w", err))
@@ -129,7 +134,7 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		}
 	}
 	// 4) Launch the agent as the non-root run user, backgrounded (exec-into-idle).
-	if err := f.Backend.ExecDetached(ctx, id, runAsUser(user, launchScript(prof.RenderLaunch(prompt), home, res.RemoteWorkspaceFolder))); err != nil {
+	if err := f.Backend.ExecDetached(ctx, id, runAsUser(user, launchScript(prof.RenderLaunch(), home, res.RemoteWorkspaceFolder))); err != nil {
 		return fail(fmt.Errorf("launch agent: %w", err))
 	}
 

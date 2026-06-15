@@ -22,6 +22,11 @@ func agentEnvFile(home string) string {
 	return path.Join(home, ".flotilla", "agent.env")
 }
 
+// agentPromptFile is where the agent prompt is placed, under the run user's home.
+func agentPromptFile(home string) string {
+	return path.Join(home, ".flotilla", "prompt")
+}
+
 // runAsUser wraps a shell script to run as user via su; root/"" run it directly.
 func runAsUser(user, script string) []string {
 	if user == "" || user == "root" {
@@ -32,15 +37,16 @@ func runAsUser(user, script string) []string {
 
 // launchScript cd's into the mounted workspace (the devcontainer's reported
 // remoteWorkspaceFolder, or a /workspaces/* glob fallback), sets HOME, sources
-// the injected env-file, then execs the agent launch.
+// the injected env-file, loads the prompt from the prompt-file into
+// $FLOTILLA_PROMPT, then execs the agent launch.
 func launchScript(launch, home, workdir string) string {
 	cd := `cd "$(ls -d /workspaces/*/ 2>/dev/null | head -1)" 2>/dev/null`
 	if workdir != "" {
 		cd = fmt.Sprintf("cd '%s' 2>/dev/null", workdir)
 	}
 	return fmt.Sprintf(
-		`%s; export HOME=%s; set -a; . %s 2>/dev/null; set +a; exec %s`,
-		cd, home, agentEnvFile(home), launch)
+		`%s; export HOME=%s; set -a; . %s 2>/dev/null; set +a; export FLOTILLA_PROMPT="$(cat %s 2>/dev/null)"; exec %s`,
+		cd, home, agentEnvFile(home), agentPromptFile(home), launch)
 }
 
 // defaultDevcontainerJSON is the bundled config used when a repo ships none. It

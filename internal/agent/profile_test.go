@@ -36,9 +36,9 @@ egress_allow = ["api.openai.com"]
 	}
 }
 
-func TestRenderLaunchSubstitutesPrompt(t *testing.T) {
+func TestRenderLaunchReferencesPromptEnv(t *testing.T) {
 	p := Profile{Launch: `claude -p "{prompt}"`}
-	if got := p.RenderLaunch("fix bug"); got != `claude -p "fix bug"` {
+	if got := p.RenderLaunch(); got != `claude -p "$FLOTILLA_PROMPT"` {
 		t.Errorf("RenderLaunch = %q", got)
 	}
 }
