@@ -3,6 +3,7 @@
 package egress
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -39,4 +40,25 @@ func Compose(baked, profile, fleet []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// SquidConf renders a squid config that default-denies egress and allows HTTP(S)
+// only to the allowlisted hostnames (as dstdomain suffixes, so api.x.com matches
+// .x.com). CONNECT is restricted to 443. Caching is off.
+func SquidConf(allowlist []string, port int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "http_port %d\n", port)
+	b.WriteString("acl SSL_ports port 443\n")
+	b.WriteString("acl CONNECT method CONNECT\n")
+	b.WriteString("http_access deny CONNECT !SSL_ports\n")
+	if len(allowlist) > 0 {
+		b.WriteString("acl allowed dstdomain")
+		for _, d := range allowlist {
+			fmt.Fprintf(&b, " .%s", strings.TrimPrefix(d, "."))
+		}
+		b.WriteString("\nhttp_access allow allowed\n")
+	}
+	b.WriteString("http_access deny all\n")
+	b.WriteString("cache deny all\n")
+	return b.String()
 }
