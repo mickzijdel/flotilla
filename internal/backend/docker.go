@@ -36,6 +36,9 @@ func (d *dockerBackend) Create(ctx context.Context, o CreateOpts) (string, error
 	for _, m := range o.Mounts {
 		args = append(args, "--volume", m.Source+":"+m.Target)
 	}
+	if o.Network != "" {
+		args = append(args, "--network", o.Network)
+	}
 	if o.Workdir != "" {
 		args = append(args, "--workdir", o.Workdir)
 	}

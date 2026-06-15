@@ -28,6 +28,7 @@ type CreateOpts struct {
 	Mounts  []Mount
 	Env     map[string]string
 	Labels  map[string]string
+	Network string // network to attach at create ("" = default bridge)
 }
 
 // Container is a flotilla-managed container as seen by a backend.
@@ -75,4 +76,9 @@ type Backend interface {
 	Up(ctx context.Context, opts UpOpts) (UpResult, error)
 	ExecDetached(ctx context.Context, id string, cmd []string) error
 	CopyTo(ctx context.Context, id, hostPath, destPath string) error
+	NetworkCreate(ctx context.Context, name string, internal bool) error
+	NetworkRemove(ctx context.Context, name string) error
+	NetworkConnect(ctx context.Context, network, id string) error
+	NetworkDisconnect(ctx context.Context, network, id string) error
+	ContainerNetworks(ctx context.Context, id string) ([]string, error)
 }

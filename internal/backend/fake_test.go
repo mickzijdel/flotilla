@@ -94,3 +94,32 @@ func TestFakeExecDetachedAndCopyToRecord(t *testing.T) {
 		t.Errorf("CopyCall = %+v", cp)
 	}
 }
+
+func TestFakeNetworkAndContainerNetworks(t *testing.T) {
+	ctx := context.Background()
+	f := NewFake()
+	if err := f.NetworkCreate(ctx, "flotilla-net-atlas", true); err != nil {
+		t.Fatalf("NetworkCreate: %v", err)
+	}
+	id, _ := f.Create(ctx, CreateOpts{Name: "p", Image: "ubuntu/squid", Network: "bridge", Labels: map[string]string{LabelAgent: "atlas"}})
+	if err := f.NetworkConnect(ctx, "flotilla-net-atlas", id); err != nil {
+		t.Fatalf("NetworkConnect: %v", err)
+	}
+	if err := f.NetworkDisconnect(ctx, "bridge", id); err != nil {
+		t.Fatalf("NetworkDisconnect: %v", err)
+	}
+	nets, err := f.ContainerNetworks(ctx, id)
+	if err != nil {
+		t.Fatalf("ContainerNetworks: %v", err)
+	}
+	// started on "bridge" (from Create.Network), connected internal, disconnected bridge.
+	if len(nets) != 1 || nets[0] != "flotilla-net-atlas" {
+		t.Errorf("ContainerNetworks = %v, want [flotilla-net-atlas]", nets)
+	}
+	if err := f.NetworkRemove(ctx, "flotilla-net-atlas"); err != nil {
+		t.Fatalf("NetworkRemove: %v", err)
+	}
+	if len(f.NetworkCreates) != 1 || len(f.NetworkRemoves) != 1 {
+		t.Errorf("network calls not recorded: creates=%v removes=%v", f.NetworkCreates, f.NetworkRemoves)
+	}
+}

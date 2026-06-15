@@ -26,9 +26,12 @@ type Fake struct {
 	CopyCalls             []CopyCall
 	RemoteUser            string // returned by Up (default "" → caller treats as root)
 	RemoteWorkspaceFolder string // returned by Up
+	NetworkCreates        []string
+	NetworkRemoves        []string
+	nets                  map[string][]string // id -> attached network names
 }
 
-func NewFake() *Fake { return &Fake{items: map[string]*Container{}} }
+func NewFake() *Fake { return &Fake{items: map[string]*Container{}, nets: map[string][]string{}} }
 
 func (f *Fake) Create(_ context.Context, o CreateOpts) (string, error) {
 	f.mu.Lock()
@@ -42,6 +45,9 @@ func (f *Fake) Create(_ context.Context, o CreateOpts) (string, error) {
 		Status:  "created",
 		Created: time.Unix(int64(f.seq), 0).UTC(),
 		Labels:  o.Labels,
+	}
+	if o.Network != "" {
+		f.nets[id] = []string{o.Network}
 	}
 	return id, nil
 }
@@ -120,6 +126,9 @@ func (f *Fake) Up(_ context.Context, o UpOpts) (UpResult, error) {
 		Created: time.Unix(int64(f.seq), 0).UTC(),
 		Labels:  o.Labels,
 	}
+	// devcontainer up places the container on the default bridge; the
+	// firewall's topology guard checks for exactly ["bridge"].
+	f.nets[id] = []string{"bridge"}
 	return UpResult{ID: id, RemoteUser: f.RemoteUser, RemoteWorkspaceFolder: f.RemoteWorkspaceFolder}, nil
 }
 
@@ -136,4 +145,45 @@ func (f *Fake) CopyTo(_ context.Context, id, hostPath, destPath string) error {
 	content, _ := os.ReadFile(hostPath) // best-effort, for test assertions
 	f.CopyCalls = append(f.CopyCalls, CopyCall{ID: id, HostPath: hostPath, DestPath: destPath, Content: content})
 	return nil
+}
+
+func (f *Fake) NetworkCreate(_ context.Context, name string, _ bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.NetworkCreates = append(f.NetworkCreates, name)
+	return nil
+}
+
+func (f *Fake) NetworkRemove(_ context.Context, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.NetworkRemoves = append(f.NetworkRemoves, name)
+	return nil
+}
+
+func (f *Fake) NetworkConnect(_ context.Context, network, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nets[id] = append(f.nets[id], network)
+	return nil
+}
+
+func (f *Fake) NetworkDisconnect(_ context.Context, network, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cur := f.nets[id]
+	out := cur[:0]
+	for _, n := range cur {
+		if n != network {
+			out = append(out, n)
+		}
+	}
+	f.nets[id] = out
+	return nil
+}
+
+func (f *Fake) ContainerNetworks(_ context.Context, id string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.nets[id]...), nil
 }
