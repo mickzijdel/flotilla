@@ -101,24 +101,33 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 
 	inj := &injector{be: f.Backend, id: id}
 
+	// After provisioning, any failure must remove both the container and the clone
+	// so a failed spawn leaves no orphan (the container is labelled and would
+	// otherwise appear in List and hold the name).
+	fail := func(e error) (Agent, error) {
+		_ = f.Backend.Remove(ctx, id)
+		_ = os.RemoveAll(dest)
+		return Agent{}, e
+	}
+
 	// 1) Secrets: resolved allowlist → 0600 env-file → container (no git creds).
 	env := resolveEnv(prof.Env, os.LookupEnv)
 	if err := inj.WriteFile(ctx, envFileContent(env), agentEnvFile); err != nil {
-		return Agent{}, fmt.Errorf("inject secrets: %w", err)
+		return fail(fmt.Errorf("inject secrets: %w", err))
 	}
 	// 2) Config: setup handler / declarative config_mounts.
 	if err := setup.Run(ctx, inj, prof); err != nil {
-		return Agent{}, fmt.Errorf("setup: %w", err)
+		return fail(fmt.Errorf("setup: %w", err))
 	}
 	// 3) Install the agent CLI.
 	if strings.TrimSpace(prof.Install) != "" {
 		if err := f.Backend.Exec(ctx, id, []string{"sh", "-c", prof.Install}); err != nil {
-			return Agent{}, fmt.Errorf("install agent: %w", err)
+			return fail(fmt.Errorf("install agent: %w", err))
 		}
 	}
 	// 4) Launch the agent, backgrounded (exec-into-idle).
 	if err := f.Backend.ExecDetached(ctx, id, launchWrapper(prof.RenderLaunch(prompt))); err != nil {
-		return Agent{}, fmt.Errorf("launch agent: %w", err)
+		return fail(fmt.Errorf("launch agent: %w", err))
 	}
 
 	return Agent{Name: name, Repo: repoURL, Status: "running", Created: time.Now().UTC(), ID: id}, nil

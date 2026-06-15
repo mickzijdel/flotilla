@@ -48,9 +48,10 @@ func TestSpawnInjectsNoGitCredentials(t *testing.T) {
 	}
 	for _, cp := range fake.CopyCalls {
 		blobs = append(blobs, cp.HostPath, cp.DestPath)
-		// Only the secret env-file's content is scanned; copied user config
-		// (e.g. a global CLAUDE.md) is non-secret and may mention "credential".
-		if cp.DestPath == agentEnvFile {
+		// Scan the content of engine-GENERATED injections (the env-file and any
+		// generated config), which route through a "flotilla-inject-" temp file.
+		// Copied USER config is non-secret prose and is intentionally not scanned.
+		if strings.Contains(cp.HostPath, "flotilla-inject-") {
 			blobs = append(blobs, string(cp.Content))
 		}
 	}

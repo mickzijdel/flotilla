@@ -61,6 +61,37 @@ func TestSpawnCleansUpCloneOnBackendFailure(t *testing.T) {
 	}
 }
 
+// failInjectBackend wraps a Fake but errors from CopyTo, to exercise Spawn's
+// post-provision cleanup (the container AND the clone must be removed).
+type failInjectBackend struct{ *backend.Fake }
+
+func (failInjectBackend) CopyTo(context.Context, string, string, string) error {
+	return errors.New("boom")
+}
+
+func TestSpawnCleansUpContainerAndCloneOnPostProvisionFailure(t *testing.T) {
+	fake := backend.NewFake()
+	be := failInjectBackend{fake}
+	f := &Fleet{Backend: be, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir()}
+	prof := agent.Profile{Name: "stub", Launch: `echo "{prompt}"`}
+	if _, err := f.Spawn(context.Background(), bareRepo(t), prof, "do"); err == nil {
+		t.Fatal("expected error when CopyTo fails after provisioning")
+	}
+	// Clone removed:
+	entries, err := os.ReadDir(f.WorkRoot)
+	if err != nil {
+		t.Fatalf("ReadDir(%q): %v", f.WorkRoot, err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("WorkRoot not empty after failed spawn: %v", entries)
+	}
+	// Container not left orphaned in the fleet:
+	got, _ := fake.List(context.Background(), nil)
+	if len(got) != 0 {
+		t.Errorf("container left behind after failed spawn: %+v", got)
+	}
+}
+
 func TestSpawnClonesAndCreatesContainer(t *testing.T) {
 	fake := backend.NewFake()
 	f := &Fleet{Backend: fake, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir()}

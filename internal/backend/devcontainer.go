@@ -45,7 +45,7 @@ func (d *dockerBackend) Up(ctx context.Context, o UpOpts) (string, error) {
 		return id, nil
 	}
 	// Fallback: resolve by the agent label we just applied.
-	return run(ctx, "ps", "-aq", "--no-trunc", "--filter", "label="+LabelAgent+"="+o.Labels[LabelAgent])
+	return run(ctx, "ps", "-aq", "--no-trunc", "--filter", "status=running", "--filter", "label="+LabelAgent+"="+o.Labels[LabelAgent])
 }
 
 // containerIDFromUp parses the trailing JSON line devcontainer up emits.
