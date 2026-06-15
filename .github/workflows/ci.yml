@@ -1,0 +1,89 @@
+# Action versions pinned to latest majors as of setup; mise provisions go/golangci-lint/gitleaks
+# at the exact versions in mise.lock so CI and the local hk pre-commit hook run the same tools.
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: jdx/mise-action@v4 # installs go/golangci-lint/shellcheck/shfmt honoring mise.lock
+      - name: Lint (golangci-lint)
+        run: golangci-lint run ./...
+      - name: Check formatting (golangci-lint fmt)
+        run: golangci-lint fmt --diff
+      - name: Run shellcheck (shipped shell scripts)
+        run: |
+          files=$( { git ls-files '*.sh' '*.bash'; git ls-files ':!*.sh' ':!*.bash' | while IFS= read -r f; do head -n1 "$f" 2>/dev/null | grep -qE '^#!.*\b(ba)?sh\b' && printf '%s\n' "$f"; done; } | sort -u )
+          if [ -n "$files" ]; then shellcheck $files; else echo "no shell files, skipping"; fi
+      - name: Check shell formatting (shfmt)
+        run: shfmt -d $(git ls-files '*.sh' '*.bash')
+      - name: Executable bits on shipped scripts
+        # Any tracked file whose first line is a shebang must be mode 100755 in the
+        # index — with core.fileMode=false a local chmod never reaches git, and a
+        # 100644 script dies with exit 126 on every fresh clone.
+        # Mirrors the hk `exec-bit-scripts` step so CI and pre-commit agree.
+        run: |
+          bad=$(git ls-files -s | awk -F'\t' '$1 ~ /^100644/ { if ((getline line < $2) > 0 && line ~ /^#!/) print $2; close($2) }')
+          if [ -n "$bad" ]; then
+            echo "Shebang scripts missing the executable bit in the git index. Fix: git update-index --chmod=+x <file>"
+            echo "$bad"
+            exit 1
+          fi
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: jdx/mise-action@v4 # installs go honoring mise.lock
+      - name: go build
+        run: go build ./...
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        # ubuntu-latest ships a Docker daemon, so the backend integration test runs too;
+        # it self-skips where docker is unavailable. -race catches data races in the
+        # concurrent fleet code.
+        run: go test -race ./...
+
+  # Run the MIT-licensed gitleaks CLI (via mise, version-pinned in mise.lock) rather than
+  # gitleaks/gitleaks-action: the action requires a paid GITLEAKS_LICENSE on org-owned repos,
+  # while the CLI is free for all repos and is exactly what the local hk pre-commit hook runs.
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # gitleaks git scans the full commit history
+      - uses: jdx/mise-action@v4
+      - name: Scan git history for secrets
+        run: mise exec -- gitleaks git --redact --no-banner .
+
+  # Noisier audits — mirror the hk `check` hook.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@v4 # provides node for the npx jscpd run
+      - name: Duplication (jscpd)
+        # -f golang scopes to Go source; .jscpd.json carries minTokens/threshold/reporters/ignore.
+        # Runner + version policy (latest on a 4-day cooldown, floored at v5 — see
+        # dev-env-setup SKILL.md › jscpd version policy) are shared with the hk pre-commit gate
+        # via scripts/run-jscpd.sh; --require keeps CI strict (unrunnable jscpd fails the job).
+        run: bash scripts/run-jscpd.sh --require golang
+      - name: Large files
+        run: |
+          limit=512000
+          large=$(git ls-files | while read -r f; do
+            s=$(stat -c%s "$f" 2>/dev/null || echo 0)
+            if [ "$s" -gt "$limit" ]; then echo "$f ($s bytes)"; fi
+          done)
+          if [ -n "$large" ]; then echo "Files exceed ${limit} bytes:"; echo "$large"; exit 1; fi

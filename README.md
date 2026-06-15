@@ -34,9 +34,25 @@ List the fleet (add `--json` for machine-readable output), print attach info (a 
 
 ## Development
 
+Provision the pinned toolchain (hk, gitleaks, go, golangci-lint, node, …) with mise, then install the pre-commit hooks:
+
+```bash
+mise install
+hk install
+```
+
+Build, test, and lint:
+
 ```bash
 go build ./...
 go test ./...
+golangci-lint run ./...
+```
+
+Run the full local check suite (linters, shell checks, duplication audit, gitleaks) before pushing:
+
+```bash
+hk run check
 ```
 
 ## Design and plan

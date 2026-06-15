@@ -1,0 +1,18 @@
+# dev-env standard (dev-hooks:dev-env-setup) — golangci-lint v2 config.
+# `golangci-lint run` (linting) and `golangci-lint fmt` (formatting) both read this file.
+version: "2"
+
+linters:
+  # `standard` enables the maintained default set: errcheck, govet, ineffassign,
+  # staticcheck (incl. the `unused` dead-code analyzer). Add more below if wanted.
+  default: standard
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - legacy
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

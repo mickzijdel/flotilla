@@ -1,2 +1,29 @@
 [tools]
-go = "latest"
+hk = "latest"
+pkl = "latest"
+gitleaks = "latest"
+go = "latest"             # Go stack tool (go build / go test / go vet)
+golangci-lint = "latest"  # Go meta-linter (govet, staticcheck, unused, errcheck, gofmt/goimports formatters)
+shellcheck = "latest"     # lints shipped shell scripts (scripts/run-jscpd.sh)
+shfmt = "latest"          # formats shipped shell scripts
+node = "latest"           # provides npx, used to run jscpd 5.x (`npx --yes jscpd@latest`)
+# jscpd (duplication) runs via npx — see hk.pkl / .jscpd.json (not a mise tool; jscpd 5.x ships
+# as a Rust binary via npm optional platform packages that npx resolves but mise's npm backend
+# does not). Dead-code + unused detection is handled by golangci-lint (staticcheck `unused`), so
+# no separate tool is needed for Go.
+
+[settings]
+# Maintain mise.lock (resolved versions + per-platform checksums) on every install.
+# Tools stay spec'd "latest"; the lock records what that resolved to so installs are
+# reproducible + checksum-verified (aqua-backed tools add Cosign/SLSA). Upgrade with
+# `mise upgrade`, then commit the changed mise.lock.
+lockfile = true
+# Prevent `mise upgrade` from resolving a tool version published in the last 4 days — same
+# supply-chain window as the Bundler/uv/npm dependency cooldowns. `mise install` is unaffected
+# (it always reproduces the locked version from mise.lock).
+minimum_release_age = "4d"
+
+[env]
+# dev-env standard version this repo targets (dev-hooks:dev-env-setup). Do not
+# hand-edit — bump it by running the skill's upgrade path.
+DEV_ENV_VERSION = "15"

@@ -1,0 +1,68 @@
+// dev-env standard (dev-hooks:dev-env-setup) — version tracked via DEV_ENV_VERSION in mise.toml.
+// For Go repos. Linting/formatting is delegated to golangci-lint (which bundles govet,
+// staticcheck, unused/dead-code, errcheck, and the gofmt/goimports formatters); shell scripts
+// shipped alongside (scripts/run-jscpd.sh) are covered by shellcheck/shfmt.
+amends "package://github.com/jdx/hk/releases/download/v1.47.0/hk@1.47.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.47.0/hk@1.47.0#/Builtins.pkl"
+
+local linters = new Mapping<String, Step> {
+    // --- Go ----------------------------------------------------------------------
+    // golangci-lint operates on packages, not individual files, so these carry a glob
+    // (gate the step on a staged *.go file) but run the whole module via `./...` rather
+    // than `{{ files }}`. `fmt` applies the gofmt/goimports formatters configured in
+    // .golangci.yml; `run` is the linter pass (govet, staticcheck, unused, errcheck, …).
+    ["golangci-lint-fmt"] {
+        glob = "**/*.go"
+        check = "golangci-lint fmt --diff"
+        fix = "golangci-lint fmt"
+    }
+    ["golangci-lint"] {
+        glob = "**/*.go"
+        check = "golangci-lint run ./..."
+        fix = "golangci-lint run --fix ./..."
+    }
+    // --- Shell scripts shipped in the repo (scripts/run-jscpd.sh, any bin/*.sh) --------
+    ["shellcheck"] = Builtins.shellcheck
+    ["shfmt"] = Builtins.shfmt
+    // Shipped scripts must carry the executable bit IN THE GIT INDEX (mode 100755):
+    // with core.fileMode=false a local chmod +x never reaches git, so clones get
+    // scripts that die with exit 126 "Permission denied". Detects scripts by shebang
+    // (line 1 only) among 100644-mode index entries. Single awk on purpose: hk's
+    // internal `sh` chokes on a while/read loop inside $() (kills the script at the
+    // assignment even when the substitution exits 0), so keep every intermediate
+    // command zero-exit. CI's lint job enforces the same rule (see ci.yml), so the
+    // gates can't drift.
+    ["exec-bit-scripts"] {
+        check = "bad=$(git ls-files -s | awk -F'\\t' '$1 ~ /^100644/ { if ((getline line < $2) > 0 && line ~ /^#!/) print $2; close($2) }'); if [ -n \"$bad\" ]; then echo 'Shebang scripts missing the executable bit in the git index. Fix: git update-index --chmod=+x <file>'; echo \"$bad\"; exit 1; fi"
+    }
+    // --- Audits (duplication) ---------------------------------------------------
+    // jscpd 5.x via npx; config in `.jscpd.json`. `-f golang` scopes to Go source so
+    // docs/yaml aren't flagged. The version-cooldown policy (latest on a 4-day cooldown,
+    // floored at v5) and the offline fallback live in scripts/run-jscpd.sh, shared with
+    // the CI audit job so the local and CI gates can't drift.
+    ["jscpd"] {
+        glob = "**/*.go"
+        check = "bash scripts/run-jscpd.sh golang"
+    }
+    // Secret scanning (defense-in-depth alongside fnox). hk builtin.
+    ["gitleaks"] = Builtins.gitleaks
+    // Block accidentally-committed large files. hk builtin.
+    ["check-added-large-files"] = Builtins.check_added_large_files
+}
+
+hooks {
+    ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps = linters
+    }
+    ["fix"] {
+        fix = true
+        steps = linters
+    }
+    // `check` is the full suite CI runs. The audits (jscpd) already run on pre-commit;
+    // `check` is just the same set under one name.
+    ["check"] {
+        steps = linters
+    }
+}
