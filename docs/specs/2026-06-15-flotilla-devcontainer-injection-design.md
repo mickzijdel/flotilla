@@ -227,3 +227,29 @@ The `devcontainer` CLI is **not guaranteed present** (it is absent on the curren
 - Determine whether `devcontainer --secrets-file` alone reaches the *detached* launch process; if
   so, prefer it over the `docker cp` env-file for the secret (decision #3 fallback).
 - Confirm the container-id resolution from `devcontainer up` output (JSON vs `docker ps` by label).
+
+## 14. Corrections from live verification (2026-06-15)
+
+Resolved against the real `devcontainer` CLI (v0.87.0); the implementation follows these, which
+refine §5–§6:
+
+- **Local Feature reference.** `--additional-features` does **not** accept an absolute (or
+  arbitrary) local path — it treats the key as an OCI ref and fails ("may not be logged in"). A
+  *local* Feature is only resolved when it lives in a sub-folder of the workspace's `.devcontainer/`
+  and is referenced by a path **relative to that folder**. So the engine extracts the vendored
+  Feature to `<clone>/.devcontainer/flotilla-toolchain/` and passes
+  `--additional-features '{"./flotilla-toolchain": {}}'`. This cleanly overlays on top of the repo's
+  **own** devcontainer when present, and on a bundled default (written to
+  `<clone>/.devcontainer/devcontainer.json`) when not — both via plain auto-discovery, so the
+  external `--config` path and the `UpOpts.ConfigPath` field were dropped.
+- **Container idles + workspace.** `devcontainer up` keeps the container alive (default
+  `overrideCommand`), and mounts the workspace under `/workspaces/<name>`; the launch wrapper `cd`s
+  into it (resolved via a `/workspaces/*` glob) so the agent operates on the repo.
+- **Secret transport.** The `docker cp` `0600` env-file (decision #3 primary) works as designed and
+  reaches the detached launch; `--secrets-file` was not needed.
+- **End-to-end verified** on `octocat/Hello-World` (no repo devcontainer): toolchain Feature installs
+  node/git, the agent CLI installs, `~/.claude` is assembled, the token env-file lands `0600`, the
+  workspace is mounted, and **no git credentials are present in the container**. The only step not
+  exercised without a `CLAUDE_CODE_OAUTH_TOKEN` is the agent producing real output.
+- **New robustness items** (stale work-dir orphan collision; root `.devcontainer.json` form;
+  `/workspaces/*` glob; no Feature caching) are captured in [the backlog](../backlog.md).

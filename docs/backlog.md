@@ -38,9 +38,27 @@ Roughly in dependency order:
   prompt is interpolated verbatim into the launch template run via `sh -c`; a prompt with shell
   metacharacters (`"`, `$`, backtick) breaks/alters the command. Documented in code. Fix by passing
   the prompt out-of-band (env var or argv) instead of string interpolation.
-- **Name-collision race** (`Spawn`: `List` → `naming.Pick` → `Create`, no lock). Two concurrent
-  spawns can pick the same name; the loser's `docker create --name` fails loudly (and now its clone
-  dir is cleaned up), so blast radius is small. Revisit for the concurrent/remote backend.
+- **Name-collision race** (`Spawn`: `List` → `naming.Pick` → `Up`, no lock). Two concurrent
+  spawns can pick the same name; the loser's labelled `devcontainer up` / clone fails loudly, so
+  blast radius is small. Revisit for the concurrent/remote backend.
+- **Stale work-dir orphans collide on clone** (surfaced in live verification). `naming.Pick` avoids
+  names of *running* containers (via `List`), but an orphaned on-disk clone left in
+  `~/.flotilla/work/<name>` (e.g. from an interrupted run) isn't reflected there, so the next spawn
+  can pick that name and `git clone` fails with "destination path already exists." Fix: have `Spawn`
+  detect/clean a pre-existing `dest`, and/or fold the work dir into name avoidance.
+- **Repos using the root `.devcontainer.json` form** (not `.devcontainer/devcontainer.json`). The
+  toolchain Feature is overlaid as a local Feature under `<clone>/.devcontainer/`, referenced
+  relative to that folder — which the devcontainer CLI requires. A repo whose config is the root
+  `.devcontainer.json` variant will get a flotilla default `.devcontainer/devcontainer.json` that
+  shadows it. Rare; handle by detecting that form (or publish the Feature to GHCR so the overlay no
+  longer needs a local path).
+- **Launch `cd` uses a `/workspaces/*` glob** (`launchWrapper`, best-effort). Correct for the
+  devcontainer default and the bundled default config; a repo whose devcontainer sets a non-default
+  `workspaceFolder` (outside `/workspaces`) won't have the agent `cd`'d into it. Robust fix: capture
+  `remoteWorkspaceFolder` from `devcontainer up`'s JSON output and pass it explicitly.
+- **Toolchain Feature re-installs every spawn** (no image-layer caching across agents). The vendored
+  local Feature is rebuilt per container. Promote to a prebuilt base image or a GHCR-published
+  Feature (spec §4.3 / §10) so node/gh/mise are cached.
 - **`parseLabels` splits on `,`** (`internal/backend/docker.go`). Corrupts any label value
   containing a comma. Today's labels are comma-free; `flotilla.repo` (arbitrary URL) is the closest
   risk. Revisit when label values get richer.
