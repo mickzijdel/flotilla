@@ -92,6 +92,32 @@ func TestSpawnCleansUpContainerAndCloneOnPostProvisionFailure(t *testing.T) {
 	}
 }
 
+func TestSpawnRemovesStaleWorkDir(t *testing.T) {
+	fake := backend.NewFake()
+	work := t.TempDir()
+	// Pre-create the dir the first picked name ("atlas") will clone into, with junk.
+	stale := filepath.Join(work, "atlas")
+	if err := os.MkdirAll(stale, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "leftover.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := &Fleet{Backend: fake, BaseImage: "ubuntu:24.04", WorkRoot: work}
+	prof := agent.Profile{Name: "stub", Launch: `echo "{prompt}"`}
+	a, err := f.Spawn(context.Background(), bareRepo(t), prof, "do")
+	if err != nil {
+		t.Fatalf("Spawn over a stale work dir: %v", err)
+	}
+	// The clone replaced the stale dir: the repo file exists, the leftover is gone.
+	if _, err := os.Stat(filepath.Join(work, a.Name, "f.txt")); err != nil {
+		t.Errorf("expected cloned repo file: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(work, a.Name, "leftover.txt")); !os.IsNotExist(err) {
+		t.Errorf("stale leftover.txt should be gone, stat err = %v", err)
+	}
+}
+
 func TestSpawnClonesAndCreatesContainer(t *testing.T) {
 	fake := backend.NewFake()
 	f := &Fleet{Backend: fake, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir()}

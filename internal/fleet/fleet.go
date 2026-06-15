@@ -54,6 +54,9 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	name := naming.Pick(taken)
 
 	dest := filepath.Join(f.workRoot(), name)
+	// A leftover clone at dest (name is free per List, so any dir here is a
+	// stale orphan from an interrupted spawn) would make git clone fail.
+	_ = os.RemoveAll(dest)
 	if err := gitops.Clone(ctx, repoURL, dest); err != nil {
 		return Agent{}, err
 	}
