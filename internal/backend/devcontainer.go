@@ -59,11 +59,12 @@ func upResultFromOutput(out string) UpResult {
 			continue
 		}
 		var r struct {
-			ContainerID string `json:"containerId"`
-			RemoteUser  string `json:"remoteUser"`
+			ContainerID           string `json:"containerId"`
+			RemoteUser            string `json:"remoteUser"`
+			RemoteWorkspaceFolder string `json:"remoteWorkspaceFolder"`
 		}
 		if err := json.Unmarshal([]byte(line), &r); err == nil && r.ContainerID != "" {
-			return UpResult{ID: r.ContainerID, RemoteUser: r.RemoteUser}
+			return UpResult{ID: r.ContainerID, RemoteUser: r.RemoteUser, RemoteWorkspaceFolder: r.RemoteWorkspaceFolder}
 		}
 	}
 	return UpResult{}

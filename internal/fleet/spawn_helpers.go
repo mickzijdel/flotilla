@@ -30,13 +30,17 @@ func runAsUser(user, script string) []string {
 	return []string{"su", user, "-c", script}
 }
 
-// launchScript cd's into the mounted workspace, sets HOME, sources the injected
-// env-file, then execs the agent launch. Run via runAsUser so the agent (which
-// refuses --dangerously-skip-permissions as root) runs as the non-root user.
-func launchScript(launch, home string) string {
+// launchScript cd's into the mounted workspace (the devcontainer's reported
+// remoteWorkspaceFolder, or a /workspaces/* glob fallback), sets HOME, sources
+// the injected env-file, then execs the agent launch.
+func launchScript(launch, home, workdir string) string {
+	cd := `cd "$(ls -d /workspaces/*/ 2>/dev/null | head -1)" 2>/dev/null`
+	if workdir != "" {
+		cd = fmt.Sprintf("cd '%s' 2>/dev/null", workdir)
+	}
 	return fmt.Sprintf(
-		`cd "$(ls -d /workspaces/*/ 2>/dev/null | head -1)" 2>/dev/null; export HOME=%s; set -a; . %s 2>/dev/null; set +a; exec %s`,
-		home, agentEnvFile(home), launch)
+		`%s; export HOME=%s; set -a; . %s 2>/dev/null; set +a; exec %s`,
+		cd, home, agentEnvFile(home), launch)
 }
 
 // defaultDevcontainerJSON is the bundled config used when a repo ships none. It

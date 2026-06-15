@@ -29,18 +29,22 @@ func TestEnvFileContentSortedKV(t *testing.T) {
 }
 
 func TestLaunchScriptSourcesEnvFileThenExecs(t *testing.T) {
-	got := launchScript(`claude -p "hi"`, "/home/ubuntu")
+	got := launchScript(`claude -p "hi"`, "/home/ubuntu", "/workspaces/atlas")
 	if !strings.Contains(got, agentEnvFile("/home/ubuntu")) {
 		t.Errorf("launchScript should source the env-file: %q", got)
 	}
 	if !strings.Contains(got, `exec claude -p "hi"`) {
 		t.Errorf("launchScript should exec the launch: %q", got)
 	}
-	if !strings.Contains(got, "/workspaces/") {
-		t.Errorf("launchScript should cd into the mounted workspace: %q", got)
+	if !strings.Contains(got, "cd '/workspaces/atlas'") {
+		t.Errorf("launchScript should cd into remoteWorkspaceFolder: %q", got)
 	}
 	if !strings.Contains(got, "export HOME=/home/ubuntu") {
 		t.Errorf("launchScript should set HOME: %q", got)
+	}
+	// With empty workdir, fall back to the glob.
+	if g := launchScript("x", "/root", ""); !strings.Contains(g, "/workspaces/*/") {
+		t.Errorf("empty workdir should fall back to the glob: %q", g)
 	}
 }
 

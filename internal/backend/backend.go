@@ -58,8 +58,9 @@ type UpOpts struct {
 
 // UpResult is the outcome of provisioning a devcontainer.
 type UpResult struct {
-	ID         string
-	RemoteUser string
+	ID                    string
+	RemoteUser            string
+	RemoteWorkspaceFolder string
 }
 
 // Backend abstracts the compute substrate (local Docker for v1).

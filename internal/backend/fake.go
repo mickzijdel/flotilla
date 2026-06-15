@@ -20,11 +20,12 @@ type Fake struct {
 	seq   int
 	items map[string]*Container
 	// ExecCalls records (id, cmd) for assertions.
-	ExecCalls     [][]string
-	UpCalls       []UpOpts
-	DetachedCalls [][]string
-	CopyCalls     []CopyCall
-	RemoteUser    string // returned by Up (default "" → caller treats as root)
+	ExecCalls             [][]string
+	UpCalls               []UpOpts
+	DetachedCalls         [][]string
+	CopyCalls             []CopyCall
+	RemoteUser            string // returned by Up (default "" → caller treats as root)
+	RemoteWorkspaceFolder string // returned by Up
 }
 
 func NewFake() *Fake { return &Fake{items: map[string]*Container{}} }
@@ -119,7 +120,7 @@ func (f *Fake) Up(_ context.Context, o UpOpts) (UpResult, error) {
 		Created: time.Unix(int64(f.seq), 0).UTC(),
 		Labels:  o.Labels,
 	}
-	return UpResult{ID: id, RemoteUser: f.RemoteUser}, nil
+	return UpResult{ID: id, RemoteUser: f.RemoteUser, RemoteWorkspaceFolder: f.RemoteWorkspaceFolder}, nil
 }
 
 func (f *Fake) ExecDetached(_ context.Context, id string, cmd []string) error {

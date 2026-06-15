@@ -129,7 +129,7 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		}
 	}
 	// 4) Launch the agent as the non-root run user, backgrounded (exec-into-idle).
-	if err := f.Backend.ExecDetached(ctx, id, runAsUser(user, launchScript(prof.RenderLaunch(prompt), home))); err != nil {
+	if err := f.Backend.ExecDetached(ctx, id, runAsUser(user, launchScript(prof.RenderLaunch(prompt), home, res.RemoteWorkspaceFolder))); err != nil {
 		return fail(fmt.Errorf("launch agent: %w", err))
 	}
 

@@ -16,10 +16,13 @@ func devcontainerAvailable() bool {
 }
 
 func TestUpResultFromOutputParsesTrailingJSON(t *testing.T) {
-	out := "Building...\nsome log line\n{\"outcome\":\"success\",\"containerId\":\"abc123\",\"remoteUser\":\"ubuntu\"}\n"
+	out := "Building...\nsome log line\n{\"outcome\":\"success\",\"containerId\":\"abc123\",\"remoteUser\":\"ubuntu\",\"remoteWorkspaceFolder\":\"/workspaces/repo\"}\n"
 	got := upResultFromOutput(out)
 	if got.ID != "abc123" || got.RemoteUser != "ubuntu" {
 		t.Errorf("upResultFromOutput = %+v, want {abc123 ubuntu}", got)
+	}
+	if got.RemoteWorkspaceFolder != "/workspaces/repo" {
+		t.Errorf("upResultFromOutput.RemoteWorkspaceFolder = %q, want /workspaces/repo", got.RemoteWorkspaceFolder)
 	}
 	if got := upResultFromOutput("no json here"); got.ID != "" {
 		t.Errorf("upResultFromOutput = %+v, want empty", got)
