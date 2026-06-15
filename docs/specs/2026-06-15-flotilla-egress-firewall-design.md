@@ -11,7 +11,7 @@ merged devcontainer + injection slice (see
 
 Each spawned agent is confined to an **allowlist of egress destinations**. Enforcement is **outside
 the agent container** — the agent runs on a Docker **`--internal`** network with no route to the
-internet, and its only way out is a small **per-agent proxy sidecar** (tinyproxy) that allows
+internet, and its only way out is a small **per-agent proxy sidecar** (squid) that allows
 HTTP(S) `CONNECT`/requests **only to allowlisted hostnames**. Because the control plane (the proxy
 and the network topology) lives outside the blast radius, the agent — even if it gained root in its
 own container — cannot reconfigure it. The agent container gets **no extra capabilities**
@@ -27,7 +27,7 @@ container capabilities, and travels to a remote Docker backend — at the cost o
 | # | Area | Decision |
 |---|---|---|
 | 1 | Enforcement | **Out-of-container.** Agent on a Docker `--internal` network; egress only via a proxy sidecar. No `NET_ADMIN`, no in-container iptables. |
-| 2 | Proxy | **Per-agent tinyproxy sidecar** (~2–5 MB each): precise per-profile allowlist, clean lifecycle, negligible footprint vs the devcontainer. |
+| 2 | Proxy | **Per-agent squid sidecar** (`ubuntu/squid`, pinned by digest; ~25 MB): a maintained, trusted-publisher, battle-tested image — preferred over a third-party tinyproxy image or our own proxy code for a security boundary. Precise per-profile allowlist, clean lifecycle, footprint still <1% of the devcontainer. |
 | 3 | Allowlist sources | **Baked default set** + `profile.EgressAllow` (agent API) + `Fleet.EgressAllow` (engine-wide override). Per-repo `.flotilla.toml` deferred to the config-file plan. |
 | 4 | Failure mode | **Fail-closed** — any proxy/network setup error aborts the spawn (remove agent + clone + proxy + network). `Fleet.EgressFirewall bool` (default `true`) opts out (plain bridge, no proxy). |
 | 5 | Protocol | **HTTP(S) only** (a CONNECT/forward proxy). Non-HTTP egress (raw TCP, git-over-SSH) is not supported — and largely undesired, since the engine does all git ops. |
@@ -39,8 +39,8 @@ container capabilities, and travels to a remote Docker backend — at the cost o
 ```
         ┌─────────────────────────────┐         ┌──────────────────────┐
         │ agent container (devcontainer)│        │ proxy sidecar         │
-        │  no NET_ADMIN, no route out   │        │  tinyproxy            │
-        │  HTTP(S)_PROXY=proxy:8888 ────┼──┐  ┌──┤  allowlist ACL        │
+        │  no NET_ADMIN, no route out   │        │  squid (ubuntu/squid) │
+        │  HTTP(S)_PROXY=proxy:3128 ────┼──┐  ┌──┤  dstdomain allowlist  │
         └─────────────────────────────┘  │  │  └───────────┬──────────┘
                                           ▼  ▼              │ (egress net, NAT)
                                   flotilla-net-<agent>      ▼
@@ -73,21 +73,30 @@ matches `api.anthropic.com`, `statsig.anthropic.com`, etc., which the agent API 
 
 ### 3.3 The proxy image
 
-A **flotilla-built, pinned** minimal image (`proxy/Dockerfile`: `FROM alpine:<pinned>` +
-`apk add --no-cache tinyproxy`, ~10 MB) — **not** a third-party Docker Hub image, to keep the
-supply chain in-repo. Built on first use and tagged `flotilla-proxy:<version>` (rebuilt when the
-Dockerfile changes). tinyproxy config is generated per-agent: `FilterDefaultDeny Yes` + a `Filter`
-file of the allowlist (anchored host patterns), `Allow 0.0.0.0/0` from the internal net,
-`DisableViaHeader Yes`, no upstream, minimal logging.
+**`ubuntu/squid`, pinned by digest** — a maintained, trusted-publisher image (no `docker build`
+infra in the engine, no third-party-community-image risk). squid's `acl dstdomain` + `http_access`
+do hostname allowlist + default-deny, including HTTPS `CONNECT` (restricted to port 443). The engine
+generates a per-agent `squid.conf` (bind-mounted over the image's default) of the form:
+```
+http_port 3128
+acl SSL_ports port 443
+acl CONNECT method CONNECT
+http_access deny CONNECT !SSL_ports
+acl allowed dstdomain .anthropic.com .github.com .npmjs.org …   # the rendered allowlist
+http_access allow allowed
+http_access deny all
+cache deny all                                                  # no caching, minimal logs
+```
+The image digest is pinned in code (a `const`); refreshing it is a deliberate change.
 
 ### 3.4 Flow (extends Spawn)
 
 ```
 … Up (bridge) → secrets → config → install (open network: Feature build + agent CLI)
   → [firewall, if Fleet.EgressFirewall]:
-      a. render allowlist → tinyproxy.conf + filter file
+      a. render allowlist → squid.conf
       b. NetworkCreate flotilla-net-<agent> (--internal)
-      c. start proxy sidecar (flotilla-proxy image, cfg mounted), attach to internal + egress nets
+      c. start proxy sidecar (ubuntu/squid, squid.conf mounted), attach to internal + egress nets
       d. network-swap the agent: NetworkConnect internal; NetworkDisconnect bridge
       e. set HTTP_PROXY/HTTPS_PROXY/NO_PROXY in the agent (added to the env-file)
   → launch (agent now confined; only egress path is the proxy)
@@ -108,11 +117,11 @@ the `Fake` can record them (keeping `Spawn` unit-testable):
 - `NetworkConnect(ctx, network, containerID string) error`
 - `NetworkDisconnect(ctx, network, containerID string) error`
 
-The proxy sidecar is launched via the existing `Create`+`Start` (a `flotilla-proxy` image, the
-generated config bind-mounted, labels `flotilla.proxy=<agent>` + `flotilla.repo`), then attached to
-the egress network via `NetworkConnect`. The Docker impl shells `docker network …` / `docker run`;
-the `Fake` records calls for assertions. Building the proxy image is a host op (`docker build`),
-gated behind an "image present?" check.
+The proxy sidecar is launched via the existing `Create`+`Start` (the pinned `ubuntu/squid` image,
+the generated `squid.conf` bind-mounted, labels `flotilla.proxy=<agent>` + `flotilla.repo`), then
+attached to the egress network via `NetworkConnect`. The Docker impl shells `docker network …` /
+`docker run`; the `Fake` records calls for assertions. No image build is needed — the engine pulls
+the pinned `ubuntu/squid` digest on first use.
 
 ### 3.6 Lifecycle & cleanup
 
@@ -158,8 +167,8 @@ non-allowlisted host.
 ## 6. Testing strategy
 
 - **Unit (no Docker), against `Fake`:** allowlist composition
-  (`baked ∪ profile.EgressAllow ∪ Fleet.EgressAllow`, deduped/sorted); tinyproxy-config rendering
-  (default-deny + the allowlist entries); the Spawn step-ordering (network create → proxy start →
+  (`baked ∪ profile.EgressAllow ∪ Fleet.EgressAllow`, deduped/sorted); `squid.conf` rendering
+  (default-deny + the allowlist `dstdomain` entries); the Spawn step-ordering (network create → proxy start →
   swap → proxy env → launch, all between install and launch); **skipped entirely when
   `EgressFirewall=false`**; **fail-closed** (a backend whose proxy/network step errors → agent +
   clone + proxy + network all removed). The credential-isolation test still holds.
@@ -170,7 +179,7 @@ non-allowlisted host.
   fails). Plus proxy/network are removed on `rm`.
 - **Spike (plan task 1):** confirm the **network-swap** (`disconnect bridge` + `connect internal`)
   on a running devcontainer leaves engine `exec` working and the agent reachable only via the proxy;
-  confirm tinyproxy `FilterDefaultDeny` allows/denies by hostname over HTTPS CONNECT; confirm
+  confirm squid `acl dstdomain` + `http_access deny all` allows/denies by hostname over HTTPS CONNECT; confirm
   embedded DNS / proxy resolution works on an `--internal` network.
 
 ## 7. Out of scope (later)
