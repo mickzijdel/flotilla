@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mickzijdel/flotilla/internal/agent"
 	"github.com/mickzijdel/flotilla/internal/backend"
+	"github.com/mickzijdel/flotilla/internal/feature"
 	"github.com/mickzijdel/flotilla/internal/gitops"
 	"github.com/mickzijdel/flotilla/internal/naming"
+	"github.com/mickzijdel/flotilla/internal/setup"
 )
 
 // Agent is a flotilla-managed agent as the engine sees it.
@@ -36,8 +39,9 @@ func (f *Fleet) workRoot() string {
 	return filepath.Join(homeDir(), ".flotilla", "work")
 }
 
-// Spawn clones repoURL engine-side, then creates+starts a container that runs
-// the profile's launch command on the mounted clone.
+// Spawn clones repoURL engine-side, provisions a devcontainer with the toolchain
+// Feature, injects the agent's token + config, installs the agent CLI, and
+// launches it. Git credentials never enter the container.
 func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, prompt string) (Agent, error) {
 	existing, err := f.List(ctx)
 	if err != nil {
@@ -54,13 +58,35 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		return Agent{}, err
 	}
 
-	const containerWork = "/workspace"
-	id, err := f.Backend.Create(ctx, backend.CreateOpts{
-		Name:    "flotilla-" + name,
-		Image:   f.BaseImage,
-		Cmd:     []string{"sh", "-c", prof.RenderLaunch(prompt)},
-		Workdir: containerWork,
-		Mounts:  []backend.Mount{{Source: dest, Target: containerWork}},
+	// Scratch holds the extracted Feature + (optional) default config; consumed
+	// by `devcontainer up`'s build, then removed. Kept out of the agent's workspace.
+	scratch, err := os.MkdirTemp("", "flotilla-"+name+"-")
+	if err != nil {
+		_ = os.RemoveAll(dest)
+		return Agent{}, fmt.Errorf("scratch dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(scratch) }()
+
+	featPath, err := feature.Extract(scratch)
+	if err != nil {
+		_ = os.RemoveAll(dest)
+		return Agent{}, fmt.Errorf("extract feature: %w", err)
+	}
+
+	configPath := ""
+	if !hasDevcontainer(dest) {
+		configPath = filepath.Join(scratch, "devcontainer.json")
+		if err := os.WriteFile(configPath, defaultDevcontainerJSON(f.BaseImage), 0o644); err != nil {
+			_ = os.RemoveAll(dest)
+			return Agent{}, fmt.Errorf("write default devcontainer: %w", err)
+		}
+	}
+
+	id, err := f.Backend.Up(ctx, backend.UpOpts{
+		Name:               name,
+		WorkspaceFolder:    dest,
+		ConfigPath:         configPath,
+		AdditionalFeatures: map[string]any{featPath: map[string]any{}},
 		Labels: map[string]string{
 			backend.LabelAgent:   name,
 			backend.LabelRepo:    repoURL,
@@ -70,12 +96,31 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	})
 	if err != nil {
 		_ = os.RemoveAll(dest)
-		return Agent{}, fmt.Errorf("create container: %w", err)
+		return Agent{}, fmt.Errorf("provision container: %w", err)
 	}
-	if err := f.Backend.Start(ctx, id); err != nil {
-		_ = os.RemoveAll(dest)
-		return Agent{}, fmt.Errorf("start container: %w", err)
+
+	inj := &injector{be: f.Backend, id: id}
+
+	// 1) Secrets: resolved allowlist → 0600 env-file → container (no git creds).
+	env := resolveEnv(prof.Env, os.LookupEnv)
+	if err := inj.WriteFile(ctx, envFileContent(env), agentEnvFile); err != nil {
+		return Agent{}, fmt.Errorf("inject secrets: %w", err)
 	}
+	// 2) Config: setup handler / declarative config_mounts.
+	if err := setup.Run(ctx, inj, prof); err != nil {
+		return Agent{}, fmt.Errorf("setup: %w", err)
+	}
+	// 3) Install the agent CLI.
+	if strings.TrimSpace(prof.Install) != "" {
+		if err := f.Backend.Exec(ctx, id, []string{"sh", "-c", prof.Install}); err != nil {
+			return Agent{}, fmt.Errorf("install agent: %w", err)
+		}
+	}
+	// 4) Launch the agent, backgrounded (exec-into-idle).
+	if err := f.Backend.ExecDetached(ctx, id, launchWrapper(prof.RenderLaunch(prompt))); err != nil {
+		return Agent{}, fmt.Errorf("launch agent: %w", err)
+	}
+
 	return Agent{Name: name, Repo: repoURL, Status: "running", Created: time.Now().UTC(), ID: id}, nil
 }
 

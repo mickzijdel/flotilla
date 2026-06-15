@@ -36,16 +36,16 @@ func bareRepo(t *testing.T) string {
 	return bare
 }
 
-// failCreateBackend wraps a Fake but always errors from Create, to exercise
-// Spawn's cleanup-on-failure path.
-type failCreateBackend struct{ *backend.Fake }
+// failUpBackend wraps a Fake but always errors from Up, to exercise Spawn's
+// clone-cleanup-on-failure path.
+type failUpBackend struct{ *backend.Fake }
 
-func (failCreateBackend) Create(context.Context, backend.CreateOpts) (string, error) {
+func (failUpBackend) Up(context.Context, backend.UpOpts) (string, error) {
 	return "", errors.New("boom")
 }
 
 func TestSpawnCleansUpCloneOnBackendFailure(t *testing.T) {
-	be := failCreateBackend{backend.NewFake()}
+	be := failUpBackend{backend.NewFake()}
 	f := &Fleet{Backend: be, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir()}
 	prof := agent.Profile{Name: "stub", Launch: `echo "{prompt}"`}
 	if _, err := f.Spawn(context.Background(), bareRepo(t), prof, "do the thing"); err == nil {
