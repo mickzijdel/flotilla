@@ -1,0 +1,79 @@
+package backend
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os/exec"
+	"strings"
+)
+
+// devcontainer runs the devcontainer CLI and returns combined stdout.
+func devcontainer(ctx context.Context, args ...string) (string, error) {
+	var out, errb bytes.Buffer
+	cmd := exec.CommandContext(ctx, "devcontainer", args...)
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("devcontainer %s: %w: %s", strings.Join(args, " "), err, errb.String())
+	}
+	return out.String(), nil
+}
+
+// Up provisions the repo's devcontainer (or the supplied default config),
+// injecting the additional Features, and returns the container ID.
+func (d *dockerBackend) Up(ctx context.Context, o UpOpts) (string, error) {
+	args := []string{"up", "--workspace-folder", o.WorkspaceFolder}
+	if o.ConfigPath != "" {
+		args = append(args, "--config", o.ConfigPath)
+	}
+	if len(o.AdditionalFeatures) > 0 {
+		b, err := json.Marshal(o.AdditionalFeatures)
+		if err != nil {
+			return "", fmt.Errorf("marshal additional-features: %w", err)
+		}
+		args = append(args, "--additional-features", string(b))
+	}
+	for k, v := range o.Labels {
+		args = append(args, "--id-label", k+"="+v)
+	}
+	out, err := devcontainer(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+	if id := containerIDFromUp(out); id != "" {
+		return id, nil
+	}
+	// Fallback: resolve by the agent label we just applied.
+	return run(ctx, "ps", "-aq", "--no-trunc", "--filter", "label="+LabelAgent+"="+o.Labels[LabelAgent])
+}
+
+// containerIDFromUp parses the trailing JSON line devcontainer up emits.
+func containerIDFromUp(out string) string {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var r struct {
+			ContainerID string `json:"containerId"`
+		}
+		if err := json.Unmarshal([]byte(line), &r); err == nil && r.ContainerID != "" {
+			return r.ContainerID
+		}
+	}
+	return ""
+}
+
+// ExecDetached runs cmd in the container without waiting (the backgrounded launch).
+func (d *dockerBackend) ExecDetached(ctx context.Context, id string, cmd []string) error {
+	_, err := run(ctx, append([]string{"exec", "-d", id}, cmd...)...)
+	return err
+}
+
+// CopyTo copies a host file/dir into the container (no contents on argv).
+func (d *dockerBackend) CopyTo(ctx context.Context, id, hostPath, destPath string) error {
+	_, err := run(ctx, "cp", hostPath, id+":"+destPath)
+	return err
+}
