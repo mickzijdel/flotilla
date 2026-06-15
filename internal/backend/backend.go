@@ -57,5 +57,3 @@ type Backend interface {
 	List(ctx context.Context, labelFilter map[string]string) ([]Container, error)
 	AttachInfo(ctx context.Context, id string) (AttachInfo, error)
 }
-
-// NewDocker is implemented in docker.go (Task 5).

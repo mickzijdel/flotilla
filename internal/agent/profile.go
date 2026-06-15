@@ -56,6 +56,9 @@ func Builtins() (map[string]Profile, error) {
 }
 
 // RenderLaunch substitutes the {prompt} placeholder in the launch template.
+// The prompt is interpolated verbatim and the result is run via `sh -c`, so a
+// prompt containing shell metacharacters can break or alter the command;
+// passing the prompt out-of-band is a future improvement.
 func (p Profile) RenderLaunch(prompt string) string {
 	return strings.ReplaceAll(p.Launch, "{prompt}", prompt)
 }

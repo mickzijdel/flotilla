@@ -64,7 +64,7 @@ func (d *dockerBackend) Exec(ctx context.Context, id string, cmd []string) error
 	return err
 }
 
-// dockerPS is the subset of `docker inspect`/`ps` fields we read.
+// psLine is the subset of `docker inspect`/`ps` fields we read.
 type psLine struct {
 	ID      string `json:"ID"`
 	Names   string `json:"Names"`

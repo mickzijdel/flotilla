@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,6 +32,31 @@ func bareRepo(t *testing.T) string {
 	run(work, "git", "commit", "-q", "-m", "init")
 	run("", "git", "clone", "-q", "--bare", work, bare)
 	return bare
+}
+
+// failCreateBackend wraps a Fake but always errors from Create, to exercise
+// Spawn's cleanup-on-failure path.
+type failCreateBackend struct{ *backend.Fake }
+
+func (failCreateBackend) Create(context.Context, backend.CreateOpts) (string, error) {
+	return "", errors.New("boom")
+}
+
+func TestSpawnCleansUpCloneOnBackendFailure(t *testing.T) {
+	be := failCreateBackend{backend.NewFake()}
+	f := &Fleet{Backend: be, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir()}
+	prof := agent.Profile{Name: "stub", Launch: `echo "{prompt}"`}
+	if _, err := f.Spawn(context.Background(), bareRepo(t), prof, "do the thing"); err == nil {
+		t.Fatal("Spawn: expected error when Create fails, got nil")
+	}
+	// The clone dir must have been removed, leaving the work root empty.
+	entries, err := os.ReadDir(f.WorkRoot)
+	if err != nil {
+		t.Fatalf("ReadDir(%q): %v", f.WorkRoot, err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("WorkRoot not empty after failed Spawn: %v", entries)
+	}
 }
 
 func TestSpawnClonesAndCreatesContainer(t *testing.T) {
