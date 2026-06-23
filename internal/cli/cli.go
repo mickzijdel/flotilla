@@ -8,6 +8,7 @@ import (
 
 	"github.com/mickzijdel/flotilla/internal/agent"
 	"github.com/mickzijdel/flotilla/internal/fleet"
+	"github.com/mickzijdel/flotilla/internal/forge"
 	"github.com/mickzijdel/flotilla/internal/preflight"
 	"github.com/spf13/cobra"
 )
@@ -15,7 +16,7 @@ import (
 // BuildRoot wires the CLI against a Fleet.
 func BuildRoot(f *fleet.Fleet) *cobra.Command {
 	root := &cobra.Command{Use: "flotilla", Short: "Manage a fleet of autonomous coding agents"}
-	root.AddCommand(spawnCmd(f), listCmd(f), attachCmd(f), stopCmd(f), rmCmd(f), agentsCmd(), doctorCmd())
+	root.AddCommand(spawnCmd(f), listCmd(f), attachCmd(f), stopCmd(f), rmCmd(f), submitCmd(f), agentsCmd(), doctorCmd())
 	return root
 }
 
@@ -122,6 +123,44 @@ func rmCmd(f *fleet.Fleet) *cobra.Command {
 	}
 }
 
+func submitCmd(f *fleet.Fleet) *cobra.Command {
+	var force, asJSON bool
+	c := &cobra.Command{
+		Use:   "submit <agent>",
+		Short: "Push the agent's commits and open/update a PR",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			sub, err := f.Submit(cmd.Context(), args[0], force)
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(sub)
+			}
+			out := cmd.OutOrStdout()
+			switch {
+			case sub.PushOnly:
+				if _, err := fmt.Fprintf(out, "Pushed %s → open a PR: %s\n", sub.Branch, sub.PRURL); err != nil {
+					return err
+				}
+				if sub.Note != "" {
+					_, err = fmt.Fprintf(out, "(note: %s)\n", sub.Note)
+				}
+				return err
+			case sub.Created:
+				_, err = fmt.Fprintf(out, "Pushed %s → opened PR %s\n", sub.Branch, sub.PRURL)
+				return err
+			default:
+				_, err = fmt.Fprintf(out, "Pushed %s → updated existing PR %s\n", sub.Branch, sub.PRURL)
+				return err
+			}
+		},
+	}
+	c.Flags().BoolVar(&force, "force", false, "submit even if the agent is still running")
+	c.Flags().BoolVar(&asJSON, "json", false, "output JSON")
+	return c
+}
+
 func doctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
@@ -130,6 +169,15 @@ func doctorCmd() *cobra.Command {
 			rep := preflight.Check(cmd.Context(), preflight.Real())
 			for _, m := range rep.Messages() {
 				if _, err := fmt.Fprintln(cmd.OutOrStdout(), m); err != nil {
+					return err
+				}
+			}
+			if forge.GHAvailable(cmd.Context()) {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "ok: gh CLI authenticated (PRs will be opened automatically)"); err != nil {
+					return err
+				}
+			} else {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "advisory: gh CLI not found/authenticated — submit will push only and print a compare URL"); err != nil {
 					return err
 				}
 			}
