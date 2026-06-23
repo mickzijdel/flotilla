@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -122,6 +123,55 @@ func (d *dockerBackend) AttachInfo(_ context.Context, id string) (AttachInfo, er
 		DockerExec:  "docker exec -it " + id + " bash",
 		VSCode:      "Run 'Dev Containers: Attach to Running Container' and pick " + id,
 	}, nil
+}
+
+// dockerEventLine is the subset of `docker events --format '{{json .}}'` we read.
+type dockerEventLine struct {
+	Status string `json:"status"` // "die" | "stop" | "start" | ...
+	ID     string `json:"id"`
+	Actor  struct {
+		Attributes map[string]string `json:"Attributes"` // includes labels + "name"
+	} `json:"Actor"`
+}
+
+func (d *dockerBackend) Events(ctx context.Context) (<-chan Event, error) {
+	cmd := exec.CommandContext(ctx, "docker", "events",
+		"--format", "{{json .}}",
+		"--filter", "label="+LabelAgent,
+		"--filter", "event=die",
+		"--filter", "event=stop",
+		"--filter", "event=start",
+	)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	out := make(chan Event)
+	go func() {
+		defer close(out)
+		defer func() { _ = cmd.Wait() }()
+		sc := bufio.NewScanner(stdout)
+		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for sc.Scan() {
+			var l dockerEventLine
+			if err := json.Unmarshal(sc.Bytes(), &l); err != nil {
+				continue
+			}
+			ev := Event{Type: l.Status, ID: l.ID, Labels: map[string]string{}}
+			for k, v := range l.Actor.Attributes {
+				ev.Labels[k] = v
+			}
+			select {
+			case out <- ev:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out, nil
 }
 
 func parseLabels(s string) map[string]string {

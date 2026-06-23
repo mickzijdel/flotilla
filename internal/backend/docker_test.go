@@ -4,7 +4,25 @@ import (
 	"context"
 	"os/exec"
 	"testing"
+	"time"
 )
+
+func TestDockerEventsDecodes(t *testing.T) {
+	if !dockerAvailable() {
+		t.Skip("docker not available; skipping integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	d := &dockerBackend{}
+	ch, err := d.Events(ctx)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	// We can't easily trigger a flotilla-labelled container here; assert the
+	// stream is established and closes cleanly on ctx timeout.
+	for range ch { //nolint:revive // drain until close
+	}
+}
 
 func dockerAvailable() bool {
 	if _, err := exec.LookPath("docker"); err != nil {

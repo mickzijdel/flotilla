@@ -49,6 +49,13 @@ type Container struct {
 	Labels  map[string]string
 }
 
+// Event is a container lifecycle event for a flotilla-labelled container.
+type Event struct {
+	Type   string // "die" | "stop" | "start" (docker action)
+	ID     string
+	Labels map[string]string
+}
+
 // AttachInfo tells a client how to attach to a container.
 type AttachInfo struct {
 	ContainerID string
@@ -98,4 +105,7 @@ type Backend interface {
 	NetworkConnect(ctx context.Context, network, id string) error
 	NetworkDisconnect(ctx context.Context, network, id string) error
 	ContainerNetworks(ctx context.Context, id string) ([]string, error)
+	// Events streams container lifecycle events for flotilla-labelled containers
+	// until ctx is cancelled. The channel closes on ctx.Done or a fatal stream error.
+	Events(ctx context.Context) (<-chan Event, error)
 }

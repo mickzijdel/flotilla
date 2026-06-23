@@ -5,7 +5,31 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+func TestFakeEvents(t *testing.T) {
+	f := NewFake()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := f.Events(ctx)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	f.PushEvent(Event{Type: "die", ID: "fake-1", Labels: map[string]string{LabelAgent: "brave-otter"}})
+	select {
+	case e := <-ch:
+		if e.Type != "die" || e.Labels[LabelAgent] != "brave-otter" {
+			t.Fatalf("unexpected event %+v", e)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no event received")
+	}
+	cancel()
+	if _, ok := <-ch; ok {
+		t.Fatal("channel should close on ctx cancel")
+	}
+}
 
 func TestFakeLifecycle(t *testing.T) {
 	ctx := context.Background()

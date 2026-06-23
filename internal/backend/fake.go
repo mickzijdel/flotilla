@@ -36,6 +36,7 @@ type Fake struct {
 	NetworkCreates        []string
 	NetworkRemoves        []string
 	nets                  map[string][]string // id -> attached network names
+	events                chan Event          // lazily created by Events; PushEvent sends here
 }
 
 func NewFake() *Fake { return &Fake{items: map[string]*Container{}, nets: map[string][]string{}} }
@@ -214,4 +215,34 @@ func (f *Fake) ContainerNetworks(_ context.Context, id string) ([]string, error)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.nets[id]...), nil
+}
+
+// Events returns a channel of pushed events, closed when ctx is cancelled.
+func (f *Fake) Events(ctx context.Context) (<-chan Event, error) {
+	f.mu.Lock()
+	if f.events == nil {
+		f.events = make(chan Event, 16)
+	}
+	ch := f.events
+	f.mu.Unlock()
+	go func() {
+		<-ctx.Done()
+		f.mu.Lock()
+		if f.events != nil {
+			close(f.events)
+			f.events = nil
+		}
+		f.mu.Unlock()
+	}()
+	return ch, nil
+}
+
+// PushEvent delivers an event to a live Events channel (no-op if none).
+func (f *Fake) PushEvent(e Event) {
+	f.mu.Lock()
+	ch := f.events
+	f.mu.Unlock()
+	if ch != nil {
+		ch <- e
+	}
 }
