@@ -38,3 +38,16 @@ func TestPromptWithWrapUpAppendsDelimitedBlock(t *testing.T) {
 		t.Error("empty wrap-up should leave the prompt unchanged")
 	}
 }
+
+func TestPromptWithFetchHintAppendsBlock(t *testing.T) {
+	got := PromptWithFetchHint("do the task")
+	if !strings.HasPrefix(got, "do the task") {
+		t.Errorf("user prompt must come first: %q", got)
+	}
+	if !strings.Contains(got, "flotilla-fetch") {
+		t.Errorf("fetch hint missing the command name: %q", got)
+	}
+	if !strings.Contains(got, "[Flotilla on-demand fetch]") {
+		t.Errorf("fetch hint block marker missing: %q", got)
+	}
+}

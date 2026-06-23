@@ -31,3 +31,16 @@ func PromptWithWrapUp(prompt, wrapUp string) string {
 	}
 	return prompt + "\n\n---\n[Flotilla submission contract]\n" + wrapUp + "\n"
 }
+
+// FetchHint tells the credential-less agent how to pull in upstream base-branch
+// changes mid-session. It is a constant preamble, not per-agent code.
+const FetchHint = "You have no git credentials inside this container. To pull in " +
+	"the latest changes from the base branch, run `flotilla-fetch` — the engine " +
+	"fetches `origin` for you — then integrate locally with `git merge origin/<base>` " +
+	"or `git rebase origin/<base>` as you see fit."
+
+// PromptWithFetchHint appends the on-demand-fetch awareness note to the prompt as
+// a clearly delimited block, mirroring PromptWithWrapUp's format.
+func PromptWithFetchHint(prompt string) string {
+	return prompt + "\n\n---\n[Flotilla on-demand fetch]\n" + FetchHint + "\n"
+}

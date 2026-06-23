@@ -184,7 +184,10 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	}
 	// Prompt: written out-of-band (file via docker cp, never argv) and loaded
 	// into $FLOTILLA_PROMPT by the launch wrapper, so metacharacters are inert.
-	if err := inj.WriteFile(ctx, []byte(agent.PromptWithWrapUp(prompt, prof.WrapUpText())), agentPromptFile(home)); err != nil {
+	// The fetch hint is always appended so the agent knows it can ask the engine
+	// to refresh origin (the flotilla-fetch shim) despite having no credentials.
+	fullPrompt := agent.PromptWithFetchHint(agent.PromptWithWrapUp(prompt, prof.WrapUpText()))
+	if err := inj.WriteFile(ctx, []byte(fullPrompt), agentPromptFile(home)); err != nil {
 		return fail(fmt.Errorf("inject prompt: %w", err))
 	}
 	// 2) Config: setup handler / declarative config_mounts, in the run user's home.
