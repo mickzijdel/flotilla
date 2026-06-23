@@ -26,13 +26,23 @@ Roughly in dependency order:
   [plan](plans/2026-06-23-flotilla-submission-flow.md).
 1. **Logs / transcript mounts** — persist per-session logs + the agent transcript
    (`TranscriptPath`) to a host dir under `~/.flotilla`, with a good date+repo naming convention;
-   consider a mounted read-only volume for live inspection.
-2. **On-demand fetch/pull** — let a running agent request the engine re-fetch/pull during a session
-   (engine-side, no creds in container).
-3. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
+   consider a mounted read-only volume for live inspection. Spec drafted:
+   [logs/transcript-mounts](specs/2026-06-23-flotilla-logs-transcript-mounts-design.md). **Prerequisite
+   for the daemon** (its launch-wrapper `status` → `done` marker is the daemon's done-signal).
+2. **Daemon (supervisor)** — an optional long-running process that watches agents and reacts:
+   **auto-submit a PR on done**, an operator **inbox**, and the **request-handler seam** that on-demand
+   fetch and the future agent question/answer channel plug into. Additive (CLI unchanged, works without
+   it); socket/broker deferred to a later Option-C upgrade. Spec drafted:
+   [daemon](specs/2026-06-23-flotilla-daemon-design.md). Sequencing: logs → daemon → fetch.
+3. **On-demand fetch/pull** — let a running agent (no creds in container) ask the engine to `git fetch`
+   `origin` into its bind-mounted clone mid-session; the new refs are live in the container instantly and
+   the agent integrates locally. Fetch-only primitive; agent-initiated path rides the daemon's
+   request-handler seam, plus a daemon-independent `flotilla fetch <agent>`. Spec drafted:
+   [on-demand fetch](specs/2026-06-23-flotilla-on-demand-fetch-design.md).
+4. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
    CLI is the primary control surface; the skill sits on top).
-4. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
-5. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
+5. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
+6. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
    is already in place. Docker Sandboxes / `sbx` could be added as an additional backend once it
    lands on Linux (see spec §7).
 
