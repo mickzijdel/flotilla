@@ -134,7 +134,7 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	}
 	// Prompt: written out-of-band (file via docker cp, never argv) and loaded
 	// into $FLOTILLA_PROMPT by the launch wrapper, so metacharacters are inert.
-	if err := inj.WriteFile(ctx, []byte(prompt), agentPromptFile(home)); err != nil {
+	if err := inj.WriteFile(ctx, []byte(agent.PromptWithWrapUp(prompt, prof.WrapUpText())), agentPromptFile(home)); err != nil {
 		return fail(fmt.Errorf("inject prompt: %w", err))
 	}
 	// 2) Config: setup handler / declarative config_mounts, in the run user's home.

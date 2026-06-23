@@ -1,0 +1,31 @@
+package agent
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestWrapUpTextDefaultsAndDisable(t *testing.T) {
+	if (Profile{}).WrapUpText() != DefaultWrapUp {
+		t.Error("empty WrapUp should fall back to DefaultWrapUp")
+	}
+	if (Profile{WrapUp: "custom"}).WrapUpText() != "custom" {
+		t.Error("explicit WrapUp should win")
+	}
+	if (Profile{WrapUp: "-"}).WrapUpText() != "" {
+		t.Error("'-' sentinel should disable the wrap-up contract")
+	}
+}
+
+func TestPromptWithWrapUpAppendsDelimitedBlock(t *testing.T) {
+	got := PromptWithWrapUp("do the thing", DefaultWrapUp)
+	if !strings.HasPrefix(got, "do the thing") {
+		t.Error("user prompt must come first")
+	}
+	if !strings.Contains(got, "commit") {
+		t.Error("wrap-up contract should mention committing")
+	}
+	if PromptWithWrapUp("just this", "") != "just this" {
+		t.Error("empty wrap-up should leave the prompt unchanged")
+	}
+}
