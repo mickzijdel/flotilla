@@ -44,10 +44,15 @@ Roughly in dependency order:
    the agent integrates locally. Fetch-only primitive; agent-initiated path rides the daemon's
    request-handler seam, plus a daemon-independent `flotilla fetch <agent>`. Spec drafted:
    [on-demand fetch](specs/2026-06-23-flotilla-on-demand-fetch-design.md).
-2. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
+2. **Agent question/answer channel** — a running agent asks its operator a question
+   (`flotilla-ask "…"`) and blocks for the reply; the operator answers with `flotilla answer <agent>
+   "…"`. Rides the daemon's request-handler seam (notify via inbox + `flotilla questions`), realises
+   the deferred **`blocked`** status, and the answer path is daemon-independent. Spec drafted:
+   [agent question channel](specs/2026-06-23-flotilla-agent-question-channel-design.md).
+3. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
    CLI is the primary control surface; the skill sits on top).
-3. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
-4. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
+4. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
+5. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
    is already in place. Docker Sandboxes / `sbx` could be added as an additional backend once it
    lands on Linux (see spec §7).
 
