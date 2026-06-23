@@ -8,13 +8,15 @@ import (
 	"testing"
 )
 
-// makeBareRepo creates a local bare repo with one commit and returns its path.
+// makeBareRepo creates a local bare repo on branch main with one commit and
+// returns its path. The fixed branch keeps base-branch assertions deterministic
+// regardless of the host's git init.defaultBranch.
 func makeBareRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	work := filepath.Join(dir, "work")
 	bare := filepath.Join(dir, "remote.git")
-	mustRun(t, "", "git", "init", "-q", work)
+	mustRun(t, "", "git", "init", "-q", "-b", "main", work)
 	mustRun(t, work, "git", "config", "user.email", "t@example.com")
 	mustRun(t, work, "git", "config", "user.name", "t")
 	if err := os.WriteFile(filepath.Join(work, "README.md"), []byte("hi"), 0o644); err != nil {

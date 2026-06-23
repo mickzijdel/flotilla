@@ -11,20 +11,8 @@ import (
 // nCommits commits on top of the clone's HEAD. Returns the clone dir.
 func cloneWithCommits(t *testing.T, nCommits int) string {
 	t.Helper()
-	root := t.TempDir()
-	work := filepath.Join(root, "work")
-	bare := filepath.Join(root, "remote.git")
-	mustRun(t, "", "git", "init", "-q", "-b", "main", work)
-	mustRun(t, work, "git", "config", "user.email", "t@example.com")
-	mustRun(t, work, "git", "config", "user.name", "t")
-	if err := os.WriteFile(filepath.Join(work, "README.md"), []byte("hi"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	mustRun(t, work, "git", "add", ".")
-	mustRun(t, work, "git", "commit", "-q", "-m", "init")
-	mustRun(t, "", "git", "clone", "-q", "--bare", work, bare)
-
-	dest := filepath.Join(root, "clone")
+	bare := makeBareRepo(t)
+	dest := filepath.Join(t.TempDir(), "clone")
 	mustRun(t, "", "git", "clone", "-q", bare, dest)
 	mustRun(t, dest, "git", "config", "user.email", "a@example.com")
 	mustRun(t, dest, "git", "config", "user.name", "agent")
