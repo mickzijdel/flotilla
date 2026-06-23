@@ -15,6 +15,12 @@ func TestWrapUpTextDefaultsAndDisable(t *testing.T) {
 	if (Profile{WrapUp: "-"}).WrapUpText() != "" {
 		t.Error("'-' sentinel should disable the wrap-up contract")
 	}
+	if (Profile{WrapUp: "   "}).WrapUpText() != DefaultWrapUp {
+		t.Error("whitespace-only WrapUp should fall back to default, not be dropped")
+	}
+	if (Profile{WrapUp: "  -  "}).WrapUpText() != "" {
+		t.Error("'-' with surrounding whitespace should still disable")
+	}
 }
 
 func TestPromptWithWrapUpAppendsDelimitedBlock(t *testing.T) {
@@ -24,6 +30,9 @@ func TestPromptWithWrapUpAppendsDelimitedBlock(t *testing.T) {
 	}
 	if !strings.Contains(got, "commit") {
 		t.Error("wrap-up contract should mention committing")
+	}
+	if !strings.Contains(got, "[Flotilla submission contract]") {
+		t.Error("contract should be appended under its delimiter header")
 	}
 	if PromptWithWrapUp("just this", "") != "just this" {
 		t.Error("empty wrap-up should leave the prompt unchanged")
