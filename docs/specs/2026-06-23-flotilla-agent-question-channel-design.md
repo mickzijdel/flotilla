@@ -31,7 +31,7 @@ just a new request `type` and the human-in-the-loop reply path.
 | 3 | Answer path | **`flotilla answer <agent> [--id <id>] "text"`** writes the response file **directly** into the agent's session dir (daemon-independent, like `flotilla fetch`'s host path). The agent's shim is already blocking on it. |
 | 4 | Discovery | **`flotilla questions [--json] [--watch]`** lists pending questions, derived purely from the filesystem (a `requests/*.json` with no matching `responses/*.json`), so it works even if the daemon is down. |
 | 5 | Blocked status | A pending question makes the agent **`blocked`** — surfaced as a derived status in `flotilla list`/`status`, computed from the filesystem. This is the realisation of the logs spec's deferred `blocked` state. |
-| 6 | Wait semantics | The `flotilla-ask` shim **blocks for a long, configurable timeout** (default 1h, env-overridable), then returns a clear "no answer (timed out)" so the agent degrades gracefully rather than hanging forever. |
+| 6 | Wait semantics | The `flotilla-ask` shim **blocks indefinitely** until the operator answers — an unanswered question must **not** let the agent proceed (the whole point is to stop it guessing). The agent stays `blocked`; the operator aborts with `flotilla stop`/`rm <agent>` if they don't want to answer. |
 | 7 | Payload | **Free-text question → free-text answer** in v1. Structured/multiple-choice questions are future. |
 
 ## 3. Architecture
@@ -39,7 +39,7 @@ just a new request `type` and the human-in-the-loop reply path.
 ```
   container: `flotilla-ask "Should I drop the legacy table?"`
         │  write requests/<id>.json {"type":"question","text":...}   (atomic: tmp+rename)
-        │  then BLOCK polling responses/<id>.json   (long timeout)
+        │  then BLOCK polling responses/<id>.json   (until answered)
         ▼
   ┌────────────────────────────┐         ┌──────────────────────────────────────────┐
   │ daemon `question` handler   │         │  operator                                  │
@@ -127,12 +127,9 @@ mkdir -p "$sess/requests" "$sess/responses"
 printf '{"type":"question","id":"%s","text":%s}' "$id" "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/^/"/; s/$/"/')" \
   > "$sess/requests/.$id.tmp"
 mv "$sess/requests/.$id.tmp" "$sess/requests/$id.json"
-# block until answered, up to FLOTILLA_ASK_TIMEOUT seconds (default 3600)
-timeout="${FLOTILLA_ASK_TIMEOUT:-3600}"; i=0
-while [ ! -f "$sess/responses/$id.json" ]; do
-  i=$((i+1)); [ "$i" -ge "$timeout" ] && { echo "flotilla-ask: no answer (timed out after ${timeout}s)" >&2; exit 1; }
-  sleep 1
-done
+# block until the operator answers — indefinitely, on purpose: the agent must
+# not proceed without an answer. (Operator can `flotilla stop <agent>` to abort.)
+while [ ! -f "$sess/responses/$id.json" ]; do sleep 1; done
 # emit just the answer text to stdout for the agent to read
 sed -n 's/.*"answer":"\(.*\)".*/\1/p' "$sess/responses/$id.json"
 ```
@@ -173,7 +170,7 @@ file (and `flotilla questions --json`) to render a prompt-the-operator UI.
 | Condition | Behaviour |
 |---|---|
 | `flotilla-ask` with no argument | usage error, exit 2 (no request written). |
-| No answer within the timeout | shim exits non-zero with "no answer (timed out)"; the agent proceeds/aborts on its own judgement. |
+| Operator never answers | the agent stays `blocked` indefinitely, by design (it must not proceed without an answer); abort via `flotilla stop`/`rm <agent>`. |
 | `flotilla answer` with no pending question | clear error: "no pending question for agent %q". |
 | Multiple pending, no `--id` | error listing the pending ids; require `--id`. |
 | `flotilla answer` for an unknown agent / missing session dir | clear error (existing `resolve` + label lookup). |
@@ -194,9 +191,9 @@ Docker-free where possible (temp session dirs + fake daemon/backend), plus the s
   `--json` shape; `--watch` drains new questions.
 - **Blocked status** — `flotilla list` shows `blocked` for an agent with a pending question and reverts
   to `running` once answered, with no daemon involved.
-- **Shim** — script-level: argument-required guard; atomic request write; block-until-response; the
-  timeout path; correct answer text on stdout; quote/backslash escaping in the question text round-trips
-  through the handler.
+- **Shim** — script-level: argument-required guard; atomic request write; blocks until a response
+  appears then unblocks; correct answer text on stdout; quote/backslash escaping in the question text
+  round-trips through the handler.
 - **Prompt preamble** — the ask-awareness line is appended to the injected prompt.
 - **Docker integration** (self-skips without Docker): a real agent runs `flotilla-ask`, the operator
   `flotilla answer`s, and the agent receives the answer.
