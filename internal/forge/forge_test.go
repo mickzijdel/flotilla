@@ -10,9 +10,10 @@ import (
 
 func TestCompareURLFromHTTPSAndSSH(t *testing.T) {
 	cases := map[string]string{
-		"https://github.com/owner/repo.git": "https://github.com/owner/repo/compare/main...flotilla/atlas",
-		"https://github.com/owner/repo":     "https://github.com/owner/repo/compare/main...flotilla/atlas",
-		"git@github.com:owner/repo.git":     "https://github.com/owner/repo/compare/main...flotilla/atlas",
+		"https://github.com/owner/repo.git":   "https://github.com/owner/repo/compare/main...flotilla/atlas",
+		"https://github.com/owner/repo":       "https://github.com/owner/repo/compare/main...flotilla/atlas",
+		"git@github.com:owner/repo.git":       "https://github.com/owner/repo/compare/main...flotilla/atlas",
+		"ssh://git@github.com/owner/repo.git": "https://github.com/owner/repo/compare/main...flotilla/atlas",
 	}
 	for remote, want := range cases {
 		got, err := CompareURL(remote, "main", "flotilla/atlas")

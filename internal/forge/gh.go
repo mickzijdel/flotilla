@@ -36,10 +36,10 @@ func (g *GH) EnsurePR(ctx context.Context, dir, branch string, st gitops.WorkSta
 	if !isGitHub(st.RemoteURL) || !GHAvailable(ctx) {
 		return PRResult{URL: cmp, PushOnly: true}, nil
 	}
-	if url := ghOut(ctx, dir, "pr", "view", branch, "--json", "url", "-q", ".url"); url != "" {
+	if url := ghOut(ctx, dir, "pr", "list", "--head", branch, "--state", "open", "--json", "url", "-q", ".[0].url"); url != "" {
 		return PRResult{URL: url, Created: false}, nil
 	}
-	url, err := ghOut2(ctx, dir, "pr", "create", "--fill", "--head", branch)
+	url, err := ghOut2(ctx, dir, "pr", "create", "--fill", "--head", branch, "--base", st.Base)
 	if err != nil {
 		return PRResult{URL: cmp, PushOnly: true}, fmt.Errorf("gh pr create: %w", err)
 	}

@@ -31,9 +31,12 @@ List the fleet (add `--json` for machine-readable output), print attach info (a 
 ./bin/flotilla stop <name>
 ./bin/flotilla rm <name>
 ./bin/flotilla submit <name>
+./bin/flotilla submit <name> --json  # machine-readable output
 ```
 
-`submit` pushes the agent's commits to a `flotilla/<name>` branch and opens a PR via `gh` (or prints a compare URL if `gh` is unavailable). It refuses a still-running agent unless `--force` is passed.
+`submit` pushes the agent's commits to a `flotilla/<name>` branch and opens a PR via `gh` (or prints a compare URL if `gh` is unavailable). It refuses a still-running agent unless `--force` is passed. Add `--json` for machine-readable output (matches `list --json` style).
+
+Run `flotilla doctor` to check prerequisites; it also reports an advisory `gh` availability check — submit still works push-only without `gh`.
 
 ## Development
 
