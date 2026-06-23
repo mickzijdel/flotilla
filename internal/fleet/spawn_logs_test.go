@@ -80,6 +80,34 @@ func TestSpawnCopyFallbackWhenRemoteUserUnresolved(t *testing.T) {
 	}
 }
 
+func TestSpawnCopyFallbackWhenRunUserDiffersFromMounted(t *testing.T) {
+	fake := backend.NewFake()
+	fake.ReadConfigResult = backend.ConfigInfo{RemoteUser: "ubuntu"} // pre-up → live mount at /home/ubuntu/...
+	fake.RemoteUser = "vscode"                                       // post-up real run user differs
+	f := &Fleet{Backend: fake, BaseImage: "ubuntu:24.04", WorkRoot: t.TempDir(), LogRoot: t.TempDir()}
+	prof := agent.Profile{Name: "claude", Launch: `echo "{prompt}"`, TranscriptPath: "~/.claude/projects"}
+
+	if _, err := f.Spawn(context.Background(), bareRepo(t), prof, "do"); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	logDir, targets := mountTargets(t, fake)
+
+	// Live transcript mount for ubuntu was declared pre-up and must still be present.
+	if !contains(targets, "/home/ubuntu/.claude/projects") {
+		t.Errorf("expected live transcript mount for pre-up user in %v", targets)
+	}
+
+	// Because the post-up run user (vscode) differs from the mounted user (ubuntu),
+	// a copy-fallback sentinel must point at vscode's path.
+	b, err := os.ReadFile(filepath.Join(logDir, ".copy-fallback"))
+	if err != nil {
+		t.Fatalf("expected .copy-fallback sentinel: %v", err)
+	}
+	if got := string(b); got != "/home/vscode/.claude/projects\n" {
+		t.Errorf(".copy-fallback = %q, want /home/vscode/.claude/projects\\n", got)
+	}
+}
+
 func contains(ss []string, want string) bool {
 	for _, s := range ss {
 		if s == want {

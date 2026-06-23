@@ -102,10 +102,12 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	// the run user's home before `up` (Docker needs an absolute container path).
 	mounts := []backend.Mount{{Source: session, Target: containerSessionDir}}
 	liveMount := false
+	mountUser := ""
 	if cfg, err := f.Backend.ReadConfig(ctx, dest); err == nil && cfg.RemoteUser != "" {
 		if target := transcriptTarget(prof.TranscriptPath, homeForUser(cfg.RemoteUser)); target != "" {
 			mounts = append(mounts, backend.Mount{Source: transcript, Target: target})
 			liveMount = true
+			mountUser = cfg.RemoteUser
 		}
 	}
 
@@ -137,9 +139,11 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	// from the host). Best-effort.
 	_ = f.Backend.Exec(ctx, id, []string{"chown", "-R", user, containerSessionDir})
 
-	// If we couldn't live-mount the transcript, record where to copy it from
-	// after the agent exits (the real run user is known now, post-up).
-	if !liveMount && strings.TrimSpace(prof.TranscriptPath) != "" {
+	// Write a copy-fallback sentinel when the transcript wasn't live-mounted at the
+	// right place: either we couldn't resolve a user pre-up, or the real post-up run
+	// user differs from the one we mounted for (so the live mount points at the wrong
+	// home). The lazy copy-out in Fleet.Logs then recovers the transcript after exit.
+	if (!liveMount || user != mountUser) && strings.TrimSpace(prof.TranscriptPath) != "" {
 		if target := transcriptTarget(prof.TranscriptPath, home); target != "" {
 			_ = os.WriteFile(filepath.Join(session, ".copy-fallback"), []byte(target+"\n"), 0o644)
 		}
