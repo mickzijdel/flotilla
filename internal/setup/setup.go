@@ -61,9 +61,22 @@ func claudeSetup(ctx context.Context, inj Injector, _ agent.Profile, home string
 	if err := inj.Exec(ctx, []string{"mkdir", "-p", dir}); err != nil {
 		return err
 	}
-	// Minimal, container-safe settings; auth is the headless token (injected by fleet).
-	// Task 1's spike may extend this with keys headless Claude needs.
-	if err := inj.WriteFile(ctx, []byte("{}\n"), filepath.Join(dir, "settings.json")); err != nil {
+	// Minimal settings + a Stop hook that commits anything the agent left
+	// uncommitted (safety net behind the wrap_up prompt contract). `|| true`
+	// keeps a no-op commit (nothing staged) from failing the hook.
+	settings := `{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "git add -A && (git diff --cached --quiet || git commit -m 'flotilla: wrap-up commit') || true" }
+        ]
+      }
+    ]
+  }
+}
+`
+	if err := inj.WriteFile(ctx, []byte(settings), filepath.Join(dir, "settings.json")); err != nil {
 		return err
 	}
 	// Carry the global CLAUDE.md if the host has one.
