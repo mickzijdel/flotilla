@@ -47,12 +47,14 @@ func logsCmd(f *fleet.Fleet) *cobra.Command {
 
 // followLog tails container.log, draining new bytes every 200ms until the
 // session status file reads "done" (then it drains once more and exits).
+// A not-yet-created container.log is treated as empty (the agent may not have
+// written output yet), unlike the non-follow path which errors.
 func followLog(ctx context.Context, dir, logPath string, out io.Writer) error {
 	var offset int64
 	for {
 		offset = drainFrom(logPath, offset, out)
 		if b, err := os.ReadFile(filepath.Join(dir, "status")); err == nil && strings.TrimSpace(string(b)) == "done" {
-			drainFrom(logPath, offset, out) // final drain
+			_ = drainFrom(logPath, offset, out) // final drain; offset no longer needed
 			return nil
 		}
 		select {
