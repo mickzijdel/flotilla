@@ -12,6 +12,7 @@ import (
 	"github.com/mickzijdel/flotilla/internal/backend"
 	"github.com/mickzijdel/flotilla/internal/egress"
 	"github.com/mickzijdel/flotilla/internal/feature"
+	"github.com/mickzijdel/flotilla/internal/forge"
 	"github.com/mickzijdel/flotilla/internal/gitops"
 	"github.com/mickzijdel/flotilla/internal/naming"
 	"github.com/mickzijdel/flotilla/internal/setup"
@@ -30,9 +31,10 @@ type Agent struct {
 type Fleet struct {
 	Backend        backend.Backend
 	BaseImage      string
-	WorkRoot       string   // host dir holding per-agent clones; defaults under ~/.flotilla
-	EgressFirewall bool     // default-deny egress via a per-agent proxy (default true via main)
-	EgressAllow    []string // engine-wide extra allowlist entries
+	WorkRoot       string      // host dir holding per-agent clones; defaults under ~/.flotilla
+	EgressFirewall bool        // default-deny egress via a per-agent proxy (default true via main)
+	EgressAllow    []string    // engine-wide extra allowlist entries
+	Forge          forge.Forge // PR creation; nil → push-only
 }
 
 func (f *Fleet) workRoot() string {
