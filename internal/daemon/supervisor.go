@@ -25,6 +25,10 @@ type Supervisor struct {
 	Paths    Paths
 	Registry *Registry        // request-handler seam (may be nil)
 	Now      func() time.Time // injectable clock (tests); nil ⇒ time.Now
+
+	// Set by RunForeground to drive the re-exec self-check; empty ⇒ no check.
+	ExePath  string
+	LockFile *os.File
 }
 
 func (s *Supervisor) now() time.Time {
@@ -110,6 +114,17 @@ func (s *Supervisor) scanOnce(ctx context.Context) {
 	}
 }
 
+// maybeReexec re-execs the daemon from a changed on-disk binary so a `flotilla`
+// upgrade doesn't leave stale reaction logic running. No-op until ExePath is set.
+func (s *Supervisor) maybeReexec() {
+	if s.ExePath == "" {
+		return
+	}
+	if shouldReexec(s.Paths.ReadVersion(), BinaryStamp(s.ExePath)) {
+		reexec(s)
+	}
+}
+
 // handleEvent reacts to a die/stop container event as a done-signal fallback.
 func (s *Supervisor) handleEvent(ctx context.Context, ev backend.Event) {
 	name := ev.Labels[backend.LabelAgent]
@@ -143,6 +158,7 @@ func (s *Supervisor) Run(ctx context.Context, interval time.Duration) error {
 			return ctx.Err()
 		case <-ticker.C:
 			s.scanOnce(ctx)
+			s.maybeReexec()
 		case ev, ok := <-events:
 			if !ok {
 				events = nil // stream closed; keep ticking on status files
