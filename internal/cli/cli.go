@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mickzijdel/flotilla/internal/agent"
+	"github.com/mickzijdel/flotilla/internal/daemon"
 	"github.com/mickzijdel/flotilla/internal/fleet"
 	"github.com/mickzijdel/flotilla/internal/forge"
 	"github.com/mickzijdel/flotilla/internal/preflight"
@@ -46,8 +47,13 @@ func spawnCmd(f *fleet.Fleet) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", a.Name, a.Status, a.ID)
-			return err
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", a.Name, a.Status, a.ID); err != nil {
+				return err
+			}
+			// Best-effort: bring up the daemon so auto-submit + inbox "just work".
+			// Failure is advisory — the spawn already succeeded.
+			_ = daemon.EnsureRunning(daemon.DefaultPaths(), currentExe())
+			return nil
 		},
 	}
 	c.Flags().StringVar(&agentName, "agent", "claude", "agent profile to run")
@@ -183,6 +189,15 @@ func doctorCmd() *cobra.Command {
 				}
 			} else {
 				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "advisory: gh CLI not found/authenticated — submit will push only and print a compare URL"); err != nil {
+					return err
+				}
+			}
+			if daemon.IsRunning(daemon.DefaultPaths()) {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "ok: daemon running (auto-submit + inbox active)"); err != nil {
+					return err
+				}
+			} else {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "advisory: daemon not running — start it with 'flotilla daemon start' for auto-submit/inbox (everything works without it)"); err != nil {
 					return err
 				}
 			}

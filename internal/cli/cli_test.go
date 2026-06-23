@@ -4,11 +4,26 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/mickzijdel/flotilla/internal/backend"
 	"github.com/mickzijdel/flotilla/internal/fleet"
 )
+
+func TestDoctorReportsDaemonStatus(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := &fleet.Fleet{Backend: backend.NewFake()}
+	root := BuildRoot(f)
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"doctor"})
+	_ = root.Execute() // may error on missing docker; we only assert the daemon line
+	if !strings.Contains(strings.ToLower(out.String()), "daemon") {
+		t.Fatalf("doctor should mention the daemon, got %q", out.String())
+	}
+}
 
 func TestListJSONOutput(t *testing.T) {
 	fake := backend.NewFake()
