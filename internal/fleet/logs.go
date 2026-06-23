@@ -9,7 +9,7 @@ import (
 // containerSessionDir is the fixed, user-agnostic mount point for an agent's
 // host session-log dir. The launch wrapper writes container.log + status here,
 // so it never needs the run user's home resolved.
-const containerSessionDir = "/flotilla/session" //nolint:unused // used in Task 3 (session-dir mounts)
+const containerSessionDir = "/flotilla/session"
 
 // logsRoot is the host dir holding per-session logs (default ~/.flotilla/logs).
 func (f *Fleet) logsRoot() string { //nolint:unused // used in Task 3 (session-dir mounts)
