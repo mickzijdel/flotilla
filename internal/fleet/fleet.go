@@ -192,11 +192,18 @@ func (f *Fleet) resolve(ctx context.Context, name string) (backend.Container, er
 	return backend.Container{}, fmt.Errorf("no agent named %q", name)
 }
 
-// Attach returns attach info for a named agent.
+// Attach returns attach info for a named agent, auto-starting it if it exited
+// (the process-exit done-signal leaves the container stopped but present, and
+// docker exec needs it running).
 func (f *Fleet) Attach(ctx context.Context, name string) (backend.AttachInfo, error) {
 	c, err := f.resolve(ctx, name)
 	if err != nil {
 		return backend.AttachInfo{}, err
+	}
+	if c.Status == "exited" {
+		if err := f.Backend.Start(ctx, c.ID); err != nil {
+			return backend.AttachInfo{}, fmt.Errorf("start exited agent %q: %w", name, err)
+		}
 	}
 	return f.Backend.AttachInfo(ctx, c.ID)
 }

@@ -30,3 +30,19 @@ func TestAttachUnknownAgentErrors(t *testing.T) {
 		t.Error("expected error for unknown agent")
 	}
 }
+
+func TestAttachAutoStartsExitedContainer(t *testing.T) {
+	fake := backend.NewFake()
+	ctx := context.Background()
+	id, _ := fake.Create(ctx, backend.CreateOpts{Labels: map[string]string{backend.LabelAgent: "atlas"}})
+	_ = fake.Stop(ctx, id) // exited
+
+	f := &Fleet{Backend: fake}
+	if _, err := f.Attach(ctx, "atlas"); err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	cs, _ := fake.List(ctx, map[string]string{backend.LabelAgent: "atlas"})
+	if cs[0].Status != "running" {
+		t.Errorf("Status = %q, want running (attach should auto-start)", cs[0].Status)
+	}
+}
