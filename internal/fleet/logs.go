@@ -12,7 +12,7 @@ import (
 const containerSessionDir = "/flotilla/session"
 
 // logsRoot is the host dir holding per-session logs (default ~/.flotilla/logs).
-func (f *Fleet) logsRoot() string { //nolint:unused // used in Task 3 (session-dir mounts)
+func (f *Fleet) logsRoot() string {
 	if f.LogRoot != "" {
 		return f.LogRoot
 	}

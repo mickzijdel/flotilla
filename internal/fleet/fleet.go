@@ -86,15 +86,39 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		}
 	}
 
+	// Per-session host log dir: live transcript mount + container.log + status.
+	session := filepath.Join(f.logsRoot(), repoSlug(repoURL), sessionDirName(name, time.Now()))
+	transcript := filepath.Join(session, "transcript")
+	if err := os.MkdirAll(transcript, 0o777); err != nil {
+		_ = os.RemoveAll(dest)
+		return Agent{}, fmt.Errorf("create log dir: %w", err)
+	}
+	_ = os.Chmod(session, 0o777)
+	_ = os.Chmod(transcript, 0o777)
+
+	// Always mount the session dir at a fixed, user-agnostic path (container.log
+	// + status ride here). Add the live transcript mount only when we can resolve
+	// the run user's home before `up` (Docker needs an absolute container path).
+	mounts := []backend.Mount{{Source: session, Target: containerSessionDir}}
+	liveMount := false
+	if cfg, err := f.Backend.ReadConfig(ctx, dest); err == nil && cfg.RemoteUser != "" {
+		if target := transcriptTarget(prof.TranscriptPath, homeForUser(cfg.RemoteUser)); target != "" {
+			mounts = append(mounts, backend.Mount{Source: transcript, Target: target})
+			liveMount = true
+		}
+	}
+
 	res, err := f.Backend.Up(ctx, backend.UpOpts{
 		Name:               name,
 		WorkspaceFolder:    dest,
 		AdditionalFeatures: map[string]any{"./flotilla-toolchain": map[string]any{}},
+		Mounts:             mounts,
 		Labels: map[string]string{
 			backend.LabelAgent:   name,
 			backend.LabelRepo:    repoURL,
 			backend.LabelCreated: time.Now().UTC().Format(time.RFC3339),
 			backend.LabelHost:    "local",
+			backend.LabelLogDir:  session,
 		},
 	})
 	if err != nil {
@@ -107,6 +131,18 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		user = "root"
 	}
 	home := homeForUser(user)
+
+	// Make the mounted session tree writable by the run user (uid may differ
+	// from the host). Best-effort.
+	_ = f.Backend.Exec(ctx, id, []string{"chown", "-R", user, containerSessionDir})
+
+	// If we couldn't live-mount the transcript, record where to copy it from
+	// after the agent exits (the real run user is known now, post-up).
+	if !liveMount && strings.TrimSpace(prof.TranscriptPath) != "" {
+		if target := transcriptTarget(prof.TranscriptPath, home); target != "" {
+			_ = os.WriteFile(filepath.Join(session, ".copy-fallback"), []byte(target+"\n"), 0o644)
+		}
+	}
 
 	inj := &injector{be: f.Backend, id: id, user: user}
 
