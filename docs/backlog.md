@@ -77,6 +77,10 @@ Roughly in dependency order:
 
 - `parseLabels` / `parseDockerTime` are only covered via the live Docker integration path; add unit
   tests with sample `docker ps` JSON.
+- End-to-end live transcript mount: a self-skipping `devcontainer up` test that spawns through the
+  full fleet path and asserts the transcript dir, `container.log`, and `status` appear on the host
+  (design spec §11). The new backend primitives (`CopyFrom`, `ReadConfig`) and all fleet logic are
+  unit-covered via `backend.Fake`; only the real-container live-mount round-trip is deferred.
 
 ## Repo hygiene
 
