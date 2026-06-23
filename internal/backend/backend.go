@@ -41,7 +41,7 @@ type Container struct {
 	ID      string
 	Name    string
 	Repo    string
-	Status  string // "running" | "exited"
+	Status  string // docker state: "running", "exited", "created", "paused", …
 	Created time.Time
 	Labels  map[string]string
 }

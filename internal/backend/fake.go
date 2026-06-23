@@ -92,6 +92,10 @@ func (f *Fake) AttachInfo(_ context.Context, id string) (AttachInfo, error) {
 	}, nil
 }
 
+// SetStatus forces a container's status. Test helper for modelling docker states
+// the Start/Stop transitions don't reach (e.g. "created" or "paused").
+func (f *Fake) SetStatus(id, status string) error { return f.setStatus(id, status) }
+
 func (f *Fake) setStatus(id, status string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

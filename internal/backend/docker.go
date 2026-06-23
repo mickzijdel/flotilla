@@ -100,10 +100,10 @@ func (d *dockerBackend) List(ctx context.Context, filter map[string]string) ([]C
 			return nil, fmt.Errorf("parse ps line: %w", err)
 		}
 		labels := parseLabels(p.Labels)
-		status := "exited"
-		if p.State == "running" {
-			status = "running"
-		}
+		// Report the real container state ("running", "exited", "created",
+		// "paused", …) rather than collapsing everything non-running to "exited",
+		// so the submit gate can tell a finished agent from one that never ran.
+		status := p.State
 		result = append(result, Container{
 			ID:      p.ID,
 			Name:    labels[LabelAgent],
