@@ -62,7 +62,7 @@ Modified:
 - Consumes: existing unexported `git(ctx, dir, args...)` in `internal/gitops/inspect.go`.
 - Produces: `func HeadSHA(ctx context.Context, dir string) (string, error)` — full 40-char SHA of `HEAD`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/gitops/head_test.go
@@ -90,12 +90,12 @@ func TestHeadSHA(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/gitops/ -run TestHeadSHA -v`
 Expected: FAIL — `undefined: HeadSHA`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```go
 // internal/gitops/head.go
@@ -109,12 +109,12 @@ func HeadSHA(ctx context.Context, dir string) (string, error) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/gitops/ -run TestHeadSHA -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/gitops/head.go internal/gitops/head_test.go
@@ -138,7 +138,7 @@ The secondary done-trigger (§10): a stream of container lifecycle events. This 
   - `Events(ctx context.Context) (<-chan Event, error)` on `Backend`.
   - On `*Fake`: `func (f *Fake) PushEvent(e Event)` — sends to the channel returned by `Events`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/backend/fake_test.go  (add to the existing file)
@@ -168,12 +168,12 @@ func TestFakeEvents(t *testing.T) {
 
 (Ensure `context` and `time` are imported in `fake_test.go`.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/backend/ -run TestFakeEvents -v`
 Expected: FAIL — `f.Events undefined` / `PushEvent undefined`.
 
-- [ ] **Step 3: Add the type + interface method**
+- [x] **Step 3: Add the type + interface method**
 
 In `internal/backend/backend.go`, add after the `Container` type:
 
@@ -194,7 +194,7 @@ And add to the `Backend` interface (after `ContainerNetworks`):
 	Events(ctx context.Context) (<-chan Event, error)
 ```
 
-- [ ] **Step 4: Implement on Fake**
+- [x] **Step 4: Implement on Fake**
 
 In `internal/backend/fake.go`, add a field to the `Fake` struct:
 
@@ -236,17 +236,17 @@ func (f *Fake) PushEvent(e Event) {
 }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `go test ./internal/backend/ -run TestFakeEvents -v`
 Expected: PASS.
 
-- [ ] **Step 6: Verify the whole backend package still compiles & passes**
+- [x] **Step 6: Verify the whole backend package still compiles & passes**
 
 Run: `go test ./internal/backend/ 2>&1 | tail -5`
 Expected: PASS (the new interface method is satisfied by Fake; Docker impl lands in Task 3 — if `go build ./...` complains that `dockerBackend` doesn't implement `Backend`, that is expected and resolved in Task 3, so run only the backend *test* here).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/backend/backend.go internal/backend/fake.go internal/backend/fake_test.go
@@ -265,7 +265,7 @@ git commit -m "feat(backend): Event type + Backend.Events seam with pushable Fak
 - Consumes: `Event` (Task 2), the existing `parseLabels` helper.
 - Produces: `func (d *dockerBackend) Events(ctx context.Context) (<-chan Event, error)`.
 
-- [ ] **Step 1: Write the failing (self-skipping) test**
+- [x] **Step 1: Write the failing (self-skipping) test**
 
 ```go
 // internal/backend/docker_test.go  (add)
@@ -289,12 +289,12 @@ func TestDockerEventsDecodes(t *testing.T) {
 
 If the existing test file has no `dockerAvailable` helper, reuse whatever guard the existing integration test uses (grep `t.Skip` in `internal/backend/docker_test.go`) and mirror it.
 
-- [ ] **Step 2: Run test to verify it fails / skips**
+- [x] **Step 2: Run test to verify it fails / skips**
 
 Run: `go test ./internal/backend/ -run TestDockerEventsDecodes -v`
 Expected: FAIL to compile — `d.Events undefined` (or SKIP once implemented if no Docker).
 
-- [ ] **Step 3: Implement Events**
+- [x] **Step 3: Implement Events**
 
 ```go
 // internal/backend/docker.go  (add imports: "bufio", "os/exec")
@@ -350,12 +350,12 @@ func (d *dockerBackend) Events(ctx context.Context) (<-chan Event, error) {
 
 (`docker events` puts container labels into `Actor.Attributes`, so `LabelAgent` is read directly from there — no extra `inspect` call.)
 
-- [ ] **Step 4: Run test to verify it passes/skips**
+- [x] **Step 4: Run test to verify it passes/skips**
 
 Run: `go test ./internal/backend/ -run TestDockerEventsDecodes -v`
 Expected: PASS or SKIP (no Docker). Also `go build ./...` now succeeds (interface fully satisfied).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/backend/docker.go internal/backend/docker_test.go
@@ -376,7 +376,7 @@ git commit -m "feat(backend): docker events stream for Backend.Events"
   - `func DefaultPaths() Paths` (Root from `os.UserHomeDir()` + `.flotilla`)
   - Methods (all return absolute paths under Root): `Pid()`, `Lock()`, `Log()`, `Inbox()`, `StateDir()`, `Version()`, `AgentsDir()`, `AgentRecord(name string)`, `LogsRoot()`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/daemon/paths_test.go
@@ -408,12 +408,12 @@ func TestPaths(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/daemon/ -run TestPaths -v`
 Expected: FAIL — package/symbols undefined.
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```go
 // internal/daemon/paths.go
@@ -449,12 +449,12 @@ func (p Paths) AgentRecord(name string) string {
 func (p Paths) LogsRoot() string { return filepath.Join(p.Root, "logs") }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/daemon/ -run TestPaths -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/daemon/paths.go internal/daemon/paths_test.go
@@ -476,7 +476,7 @@ git commit -m "feat(daemon): Paths resolves ~/.flotilla daemon file locations"
   - `func AppendEvent(path string, e InboxEvent) error` — create-on-first-write, append a JSON line, `0600`. Uses `O_APPEND` so concurrent writers don't interleave (single `Write` of one line < PIPE_BUF).
   - `func ReadEvents(path string, since time.Time) ([]InboxEvent, error)` — parse all lines; if `since` is non-zero, keep only `TS.After(since)`; a missing file returns `(nil, nil)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/daemon/inbox_test.go
@@ -527,12 +527,12 @@ func TestReadEventsMissingFile(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/daemon/ -run TestInbox -v`
 Expected: FAIL — symbols undefined.
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```go
 // internal/daemon/inbox.go
@@ -615,12 +615,12 @@ func ReadEvents(path string, since time.Time) ([]InboxEvent, error) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/daemon/ -run TestInbox -v && go test ./internal/daemon/ -run TestReadEvents -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/daemon/inbox.go internal/daemon/inbox_test.go
@@ -644,7 +644,7 @@ git commit -m "feat(daemon): append-only inbox.jsonl with since-filter reader"
   - `func (p Paths) WriteVersion(stamp string) error`, `func (p Paths) ReadVersion() string`.
   - `func BinaryStamp(exePath string) string` — `"<size>-<modunixnano>"`; `""` on stat error.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/daemon/state_test.go
@@ -688,12 +688,12 @@ func TestVersionStamp(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/daemon/ -run 'TestAgentRecord|TestVersion' -v`
 Expected: FAIL — symbols undefined.
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```go
 // internal/daemon/state.go
@@ -821,12 +821,12 @@ func atomicWrite(path string, b []byte, perm os.FileMode) error {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/daemon/ -run 'TestAgentRecord|TestVersion' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/daemon/state.go internal/daemon/state_test.go
@@ -849,7 +849,7 @@ The supervisor needs the resolved logs root and a per-agent HEAD SHA without re-
   - `func (f *Fleet) LogsDir() string` — exported alias for the unexported `logsRoot()`.
   - `func (f *Fleet) HeadSHA(ctx context.Context, name string) (string, error)` — `gitops.HeadSHA(ctx, f.workDir(name))`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/fleet/fleet_test.go  (add)
@@ -876,12 +876,12 @@ func TestFleetHeadSHA(t *testing.T) {
 
 > If `submit_test.go` has no reusable clone helper, write a small local one mirroring `internal/gitops/inspect_test.go`'s `cloneWithCommits`, placing the clone at `filepath.Join(f.WorkRoot, name)`.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/fleet/ -run 'TestFleetLogsDir|TestFleetHeadSHA' -v`
 Expected: FAIL — methods undefined.
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 In `internal/fleet/fleet.go` (after `workRoot`):
 
@@ -897,12 +897,12 @@ func (f *Fleet) HeadSHA(ctx context.Context, name string) (string, error) {
 
 (`gitops` is already imported in `fleet.go`.)
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/fleet/ -run 'TestFleetLogsDir|TestFleetHeadSHA' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/fleet/fleet.go internal/fleet/fleet_test.go internal/fleet/submit_test.go
@@ -937,7 +937,7 @@ The core reaction. Given an agent name, dedup by SHA, submit (force), and write 
 
 Use a narrow `submitter` interface (satisfied by `*fleet.Fleet`) so the supervisor unit test can use a fake without constructing Docker/forge. The real wiring (Task 12) passes the concrete `*fleet.Fleet`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/daemon/supervisor_test.go
@@ -1065,12 +1065,12 @@ func eventTypes(evs []InboxEvent) map[string]bool {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/daemon/ -run TestHandle -v`
 Expected: FAIL — `Supervisor`/`handle` undefined.
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```go
 // internal/daemon/supervisor.go
@@ -1152,12 +1152,12 @@ func (s *Supervisor) handle(ctx context.Context, name string) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/daemon/ -run TestHandle -v`
 Expected: PASS (all four handle tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/daemon/supervisor.go internal/daemon/supervisor_test.go
@@ -1197,7 +1197,7 @@ Wire the triggers: a `scanOnce` that lists agents and handles any whose `status`
   - `func (s *Supervisor) scanOnce(ctx context.Context)` — for each agent with `status == "done"`, call `handle`.
   - `func (s *Supervisor) Run(ctx context.Context, interval time.Duration) error` — startup `scanOnce`, then a ticker loop also draining `Backend.Events`; returns on `ctx.Done`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/daemon/supervisor_test.go  (add)
@@ -1287,12 +1287,12 @@ func TestDrainEventsHandlesDie(t *testing.T) {
 
 (Add imports: `os`, `path/filepath`, `github.com/mickzijdel/flotilla/internal/backend`.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/daemon/ -run 'TestScanOnce|TestRun|TestDrainEvents' -v`
 Expected: FAIL — `scanOnce`/`Run`/`handleEvent`/`Backend` field undefined.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Edit `internal/daemon/supervisor.go`: replace the `submitter` interface + field with the combined API, add the `Backend` field and the scan/run methods.
 
@@ -1391,12 +1391,12 @@ func (s *Supervisor) Run(ctx context.Context, interval time.Duration) error {
 
 Remove the now-unused `submitter` interface.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/daemon/ -run 'TestScanOnce|TestRun|TestDrainEvents|TestHandle' -v`
 Expected: PASS (all supervisor tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/daemon/supervisor.go internal/daemon/supervisor_test.go
@@ -1423,7 +1423,7 @@ The dispatch loop + envelope that on-demand fetch / question plug into. This sli
   - `func dispatchRequests(ctx context.Context, reg *Registry, agent, sessionDir string)` — scans `<sessionDir>/requests/*.json`, and for each id without a matching `<sessionDir>/responses/<id>.json`, dispatches and writes the response atomically.
 - Consumes: `Supervisor.Registry *Registry` field; `Supervisor.scanOnce` also drives request dispatch per agent.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/daemon/requests_test.go
@@ -1506,12 +1506,12 @@ func TestDispatchUnknownType(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/daemon/ -run TestDispatch -v`
 Expected: FAIL — symbols undefined.
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```go
 // internal/daemon/requests.go
@@ -1607,7 +1607,7 @@ func dispatchRequests(ctx context.Context, reg *Registry, agent, sessionDir stri
 }
 ```
 
-- [ ] **Step 4: Wire into the supervisor**
+- [x] **Step 4: Wire into the supervisor**
 
 In `internal/daemon/supervisor.go`, add a field `Registry *Registry` to `Supervisor`, and dispatch requests for each agent during `scanOnce` (so the seam is live even though no real handler is registered yet):
 
@@ -1620,12 +1620,12 @@ In `internal/daemon/supervisor.go`, add a field `Registry *Registry` to `Supervi
 
 (The session dir IS the agent's `LogDir` — the host side of the `/flotilla/session` mount, per `internal/fleet/logs.go:17` and `fleet.go:103`.)
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `go test ./internal/daemon/ -run 'TestDispatch|TestScanOnce' -v`
 Expected: PASS. Then full package: `go test ./internal/daemon/`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/daemon/requests.go internal/daemon/requests_test.go internal/daemon/supervisor.go
@@ -1652,7 +1652,7 @@ The single-instance + process-management primitives. Side-effecting syscalls (Se
   - `func shouldReexec(stored, current string) bool` — `stored != "" && current != "" && stored != current`.
   - `func StopDaemon(p Paths, wait time.Duration) error` — SIGTERM the pid, poll until gone.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/daemon/lifecycle_test.go
@@ -1745,12 +1745,12 @@ func TestReadStatus(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/daemon/ -run 'TestAcquireLock|TestPidFile|TestIsRunning|TestShouldReexec|TestReadStatus' -v`
 Expected: FAIL — symbols undefined.
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```go
 // internal/daemon/lifecycle.go
@@ -1873,12 +1873,12 @@ func StopDaemon(p Paths, wait time.Duration) error {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/daemon/ -run 'TestAcquireLock|TestPidFile|TestIsRunning|TestShouldReexec|TestReadStatus' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/daemon/lifecycle.go internal/daemon/lifecycle_test.go
@@ -1903,7 +1903,7 @@ Tie the supervisor and lifecycle together: `RunForeground` (the body of `flotill
   - `func EnsureRunning(p Paths, exePath string) error` — alias of `Start` used by `spawn` (best-effort).
 - Consumes: `Supervisor.Run` (Task 9); `BinaryStamp`/version (Task 6).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/daemon/lifecycle_test.go  (add)
@@ -1954,12 +1954,12 @@ func TestRunForegroundWritesPidThenCleansUp(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/daemon/ -run TestRunForeground -v`
 Expected: FAIL — `RunForeground` undefined.
 
-- [ ] **Step 3: Implement RunForeground / Start / EnsureRunning**
+- [x] **Step 3: Implement RunForeground / Start / EnsureRunning**
 
 ```go
 // internal/daemon/lifecycle.go  (add imports: "context", "errors", "os/exec", "os/signal")
@@ -2017,7 +2017,7 @@ func Start(p Paths, exePath string) error {
 func EnsureRunning(p Paths, exePath string) error { return Start(p, exePath) }
 ```
 
-- [ ] **Step 4: Add the re-exec self-check to the supervisor loop**
+- [x] **Step 4: Add the re-exec self-check to the supervisor loop**
 
 In `internal/daemon/supervisor.go`, add field `ExePath string` to `Supervisor`, and inside `Run`'s ticker case, after `s.scanOnce(ctx)`:
 
@@ -2049,12 +2049,12 @@ Refine — set `sup.LockFile = lock` in `RunForeground` after acquiring, and in 
 
 Add `LockFile *os.File` to the `Supervisor` struct (import `os` already present).
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `go test ./internal/daemon/ -run TestRunForeground -v && go test ./internal/daemon/`
 Expected: PASS (whole package).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/daemon/lifecycle.go internal/daemon/supervisor.go internal/daemon/lifecycle_test.go
@@ -2075,7 +2075,7 @@ git commit -m "feat(daemon): RunForeground + detached Start/EnsureRunning + re-e
 - Produces: `func daemonCmd(f *fleet.Fleet) *cobra.Command` with subcommands `start`, `stop`, `status` (`--json`), `run`.
 - The Supervisor is built with `Fleet: f, Backend: f.Backend, Paths: daemon.DefaultPaths(), Registry: daemon.NewRegistry()`. The logs root the supervisor scans is `f.LogsDir()` — but the supervisor reads each agent's `LogDir` from `List`, so no extra wiring is needed; `Paths.Root` only needs to match where Fleet writes (`~/.flotilla`). When `f.LogRoot`/`WorkRoot` are defaults, `DefaultPaths().Root` == `~/.flotilla` aligns automatically.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/cli/daemon_test.go
@@ -2140,12 +2140,12 @@ func TestDaemonStopWhenStoppedErrors(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/cli/ -run TestDaemon -v`
 Expected: FAIL — `daemon` command unknown.
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```go
 // internal/cli/daemon.go
@@ -2268,7 +2268,7 @@ var osExecutable = os.Executable // overridable in tests
 
 (Import `os`.)
 
-- [ ] **Step 4: Register in cli.go**
+- [x] **Step 4: Register in cli.go**
 
 In `internal/cli/cli.go`, extend the `AddCommand` line:
 
@@ -2278,12 +2278,12 @@ In `internal/cli/cli.go`, extend the `AddCommand` line:
 
 (`inboxCmd` lands in Task 14; if implementing strictly in order, add `daemonCmd(f)` here now and `inboxCmd(f)` in Task 14.)
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `go test ./internal/cli/ -run TestDaemon -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/cli/daemon.go internal/cli/cli.go internal/cli/daemon_test.go
@@ -2304,7 +2304,7 @@ git commit -m "feat(cli): flotilla daemon start|stop|status|run"
 - Produces: `func inboxCmd(f *fleet.Fleet) *cobra.Command` with `--json`, `--since <ts>`, `--watch`.
 - `--watch` reuses the poll-and-print loop pattern from `logs.go`'s `followLog` (read new lines every 200 ms; track the count already printed). Mutually exclusive with `--json` (matching `logs`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/cli/inbox_test.go
@@ -2381,12 +2381,12 @@ func TestInboxSince(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/cli/ -run TestInbox -v`
 Expected: FAIL — `inbox` command unknown.
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 ```go
 // internal/cli/inbox.go
@@ -2479,16 +2479,16 @@ func watchInbox(ctx context.Context, path string, since time.Time, out io.Writer
 
 (Add `"context"` to imports. `min` is a Go 1.21+ builtin.)
 
-- [ ] **Step 4: Ensure registration**
+- [x] **Step 4: Ensure registration**
 
 Confirm `inboxCmd(f)` is in the `root.AddCommand(...)` list in `cli.go` (added in Task 13's edit).
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `go test ./internal/cli/ -run TestInbox -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/cli/inbox.go internal/cli/cli.go internal/cli/inbox_test.go
@@ -2507,7 +2507,7 @@ git commit -m "feat(cli): flotilla inbox (json + since + watch)"
 - Consumes: `daemon.EnsureRunning`, `daemon.DefaultPaths`, `daemon.IsRunning`, `currentExe`.
 - Produces: after a successful `f.Spawn`, call `daemon.EnsureRunning(daemon.DefaultPaths(), currentExe())` and ignore the error (advisory). `doctor` prints whether the daemon is running.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/cli/cli_test.go  (add)
@@ -2528,12 +2528,12 @@ func TestDoctorReportsDaemonStatus(t *testing.T) {
 
 (Ensure `bytes`, `strings`, `backend`, `fleet` are imported in `cli_test.go`.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/cli/ -run TestDoctorReportsDaemon -v`
 Expected: FAIL — no "daemon" line.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `spawnCmd`'s `RunE`, after the successful spawn print (`fmt.Fprintf(... a.Name ...)`), add:
 
@@ -2559,12 +2559,12 @@ In `doctorCmd`'s `RunE`, before the final `if !rep.OK()` block, add:
 
 Add `"github.com/mickzijdel/flotilla/internal/daemon"` to `cli.go` imports.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/cli/ -run TestDoctorReportsDaemon -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/cli/cli.go internal/cli/cli_test.go
@@ -2580,22 +2580,22 @@ git commit -m "feat(cli): spawn best-effort daemon auto-start + doctor daemon ad
 - Modify: `docs/backlog.md` (mark the daemon item shipped)
 - Modify: this plan (check off completed tasks)
 
-- [ ] **Step 1: Run the full test suite with race**
+- [x] **Step 1: Run the full test suite with race**
 
 Run: `go test -race ./... 2>&1 | tail -30`
 Expected: all packages PASS (ingest full output; do not tail-truncate errors — re-run without `| tail` if anything fails).
 
-- [ ] **Step 2: Build and vet**
+- [x] **Step 2: Build and vet**
 
 Run: `go build ./... && go vet ./...`
 Expected: no output / no errors.
 
-- [ ] **Step 3: Lint + format**
+- [x] **Step 3: Lint + format**
 
 Run: `golangci-lint run ./... && golangci-lint fmt --diff`
 Expected: clean. If `fmt --diff` shows changes, run `golangci-lint fmt` and re-stage.
 
-- [ ] **Step 4: Manual smoke test (real binary, no Docker needed for inbox/status)**
+- [x] **Step 4: Manual smoke test (real binary, no Docker needed for inbox/status)**
 
 ```bash
 go build -o /tmp/flotilla-daemon-smoke .
@@ -2611,15 +2611,15 @@ sleep 1
 
 Expected: the status transitions match the comments; `daemon.log` exists under `$HOME/.flotilla/`. Verify with your own eyes (per "Always Works").
 
-- [ ] **Step 5: Update README**
+- [x] **Step 5: Update README**
 
 Add a "Daemon" section documenting `flotilla daemon start|stop|status` and `flotilla inbox`, the auto-submit-on-done behaviour, and that it's optional (everything works without it). Match the README's existing tone/format.
 
-- [ ] **Step 6: Update backlog**
+- [x] **Step 6: Update backlog**
 
 In `docs/backlog.md`, mark the daemon (supervisor / auto-submit / inbox) item as shipped, linking this plan + the design spec, mirroring how the logs/submission items were marked done.
 
-- [ ] **Step 7: Commit docs**
+- [x] **Step 7: Commit docs**
 
 ```bash
 git add README.md docs/backlog.md docs/plans/2026-06-23-flotilla-daemon.md

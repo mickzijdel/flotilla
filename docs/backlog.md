@@ -27,23 +27,27 @@ Roughly in dependency order:
 - ~~**Logs / transcript mounts** — persist per-session logs + the agent transcript to a host dir
   under `~/.flotilla/logs/<repo>/<YYYY-MM-DD-HHMM>-<agent>/` (live transcript bind-mount,
   teed `container.log`, daemon-free `status`), plus `flotilla logs <agent> [-f]`.~~ **Done** — the
-  launch-wrapper `status` → `done` marker is the daemon's done-signal (the daemon item below builds
-  on it). See [spec](specs/2026-06-23-flotilla-logs-transcript-mounts-design.md) and
+  launch-wrapper `status` → `done` marker is the daemon's done-signal (the daemon builds on it).
+  See [spec](specs/2026-06-23-flotilla-logs-transcript-mounts-design.md) and
   [plan](plans/2026-06-23-flotilla-logs-transcript-mounts.md).
-1. **Daemon (supervisor)** — an optional long-running process that watches agents and reacts:
-   **auto-submit a PR on done**, an operator **inbox**, and the **request-handler seam** that on-demand
-   fetch and the future agent question/answer channel plug into. Additive (CLI unchanged, works without
-   it); socket/broker deferred to a later Option-C upgrade. Spec drafted:
-   [daemon](specs/2026-06-23-flotilla-daemon-design.md). Sequencing: logs → daemon → fetch.
-2. **On-demand fetch/pull** — let a running agent (no creds in container) ask the engine to `git fetch`
+- ~~**Daemon (supervisor)** — an optional long-running process that watches agents and reacts:
+  auto-submit a PR on done, an operator inbox, and the request-handler seam.~~ **Done** — additive
+  supervisor (CLI unchanged, works without it): polls the logs-tree `status` → `done` marker (with a
+  `docker events` die/stop fallback) and reuses `flotilla submit` (SHA-deduped, never force-commits);
+  `~/.flotilla/inbox.jsonl` + `flotilla inbox`; state mirror under `~/.flotilla/daemon/`; self-daemonizing
+  (`flock` + pidfile, `daemon start|stop|status|run`, re-exec on upgrade); `spawn` best-effort auto-start;
+  request-handler seam scaffolded (no real handler yet — that's on-demand fetch). Socket/broker deferred
+  to a later Option-C upgrade. See [spec](specs/2026-06-23-flotilla-daemon-design.md) and
+  [plan](plans/2026-06-23-flotilla-daemon.md).
+1. **On-demand fetch/pull** — let a running agent (no creds in container) ask the engine to `git fetch`
    `origin` into its bind-mounted clone mid-session; the new refs are live in the container instantly and
    the agent integrates locally. Fetch-only primitive; agent-initiated path rides the daemon's
    request-handler seam, plus a daemon-independent `flotilla fetch <agent>`. Spec drafted:
    [on-demand fetch](specs/2026-06-23-flotilla-on-demand-fetch-design.md).
-3. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
+2. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
    CLI is the primary control surface; the skill sits on top).
-4. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
-5. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
+3. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
+4. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
    is already in place. Docker Sandboxes / `sbx` could be added as an additional backend once it
    lands on Linux (see spec §7).
 
