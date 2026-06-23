@@ -24,15 +24,17 @@ Roughly in dependency order:
   guides agents to commit before exit; `attach` auto-starts exited containers. See
   [spec](specs/2026-06-23-flotilla-submission-flow-design.md) and
   [plan](plans/2026-06-23-flotilla-submission-flow.md).
-1. **Logs / transcript mounts** — persist per-session logs + the agent transcript
-   (`TranscriptPath`) to a host dir under `~/.flotilla`, with a good date+repo naming convention;
-   consider a mounted read-only volume for live inspection.
-2. **On-demand fetch/pull** — let a running agent request the engine re-fetch/pull during a session
+- ~~**Logs / transcript mounts** — persist per-session logs + the agent transcript to a host dir
+  under `~/.flotilla/logs/<repo>/<YYYY-MM-DD-HHMM>-<agent>/` (live transcript bind-mount,
+  teed `container.log`, daemon-free `status`), plus `flotilla logs <agent> [-f]`.~~ **Done** — see
+  [spec](specs/2026-06-23-flotilla-logs-transcript-mounts-design.md) and
+  [plan](plans/2026-06-23-flotilla-logs-transcript-mounts.md).
+1. **On-demand fetch/pull** — let a running agent request the engine re-fetch/pull during a session
    (engine-side, no creds in container).
-3. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
+2. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
    CLI is the primary control surface; the skill sits on top).
-4. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
-5. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
+3. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
+4. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
    is already in place. Docker Sandboxes / `sbx` could be added as an additional backend once it
    lands on Linux (see spec §7).
 
