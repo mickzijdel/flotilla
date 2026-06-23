@@ -17,25 +17,30 @@ Roughly in dependency order:
   `ubuntu/squid` sidecar on a `--internal` network, agent network-swapped onto it). See
   [plan](plans/2026-06-15-flotilla-egress-firewall.md) and
   [spec](specs/2026-06-15-flotilla-egress-firewall-design.md).
-1. **Submission flow** — push/PR only (agents never push to protected branches directly), plus the
-   `DoneSignal` handling so the engine knows when an agent finished.
-2. **Logs / transcript mounts** — persist per-session logs + the agent transcript
+- ~~**Submission flow** — push/PR only (agents never push to protected branches directly), plus the
+  `DoneSignal` handling so the engine knows when an agent finished.~~ **Done** — `flotilla submit
+  <agent>` pushes to `flotilla/<agent>` (force-with-lease) and opens/updates a PR via `gh --fill`
+  (push-only compare-URL fallback). Status-gated; `wrap_up` prompt contract + Claude Stop hook
+  guides agents to commit before exit; `attach` auto-starts exited containers. See
+  [spec](specs/2026-06-23-flotilla-submission-flow-design.md) and
+  [plan](plans/2026-06-23-flotilla-submission-flow.md).
+1. **Logs / transcript mounts** — persist per-session logs + the agent transcript
    (`TranscriptPath`) to a host dir under `~/.flotilla`, with a good date+repo naming convention;
    consider a mounted read-only volume for live inspection.
-3. **On-demand fetch/pull** — let a running agent request the engine re-fetch/pull during a session
+2. **On-demand fetch/pull** — let a running agent request the engine re-fetch/pull during a session
    (engine-side, no creds in container).
-4. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
+3. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
    CLI is the primary control surface; the skill sits on top).
-5. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
-6. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
+4. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
+5. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
    is already in place. Docker Sandboxes / `sbx` could be added as an additional backend once it
    lands on Linux (see spec §7).
 
 ## Known issues / robustness (surfaced in the skeleton's final review — deferred, not blocking)
 
 - **README oversells "functional."** `README.md` `## Status` is now more accurate: the lifecycle
-  (spawn/list/attach/stop/rm), a runnable agent (devcontainer + injection), **and** the default-deny
-  egress firewall work. The submission/PR flow is still pending (next plan #1).
+  (spawn/list/attach/stop/rm/submit), a runnable agent (devcontainer + injection), the default-deny
+  egress firewall, and the submission flow all work.
 - **No LICENSE.** README notes "all rights reserved pending a decision." Pick a license.
 - **Prompt → `sh -c` shell-quoting hazard** (`internal/agent/profile.go` `RenderLaunch`). The
   prompt is interpolated verbatim into the launch template run via `sh -c`; a prompt with shell
