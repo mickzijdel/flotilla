@@ -42,6 +42,7 @@ func logsCmd(f *fleet.Fleet) *cobra.Command {
 	}
 	c.Flags().BoolVarP(&follow, "follow", "f", false, "stream new log output until the agent finishes")
 	c.Flags().BoolVar(&asJSON, "json", false, "output JSON metadata (logDir, status, transcript)")
+	c.MarkFlagsMutuallyExclusive("follow", "json")
 	return c
 }
 

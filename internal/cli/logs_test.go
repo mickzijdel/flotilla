@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mickzijdel/flotilla/internal/backend"
@@ -70,6 +71,26 @@ func TestLogsCmdJSONEnvelope(t *testing.T) {
 	}
 	if info.Agent != "atlas" || info.Status != "done" {
 		t.Errorf("info = %+v", info)
+	}
+}
+
+func TestLogsCmdJSONAndFollowMutuallyExclusive(t *testing.T) {
+	fake := backend.NewFake()
+	seedLoggedContainer(t, fake, "atlas", "hello\n", "done")
+	f := &fleet.Fleet{Backend: fake}
+
+	root := BuildRoot(f)
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"logs", "atlas", "--json", "-f"})
+	err := root.ExecuteContext(context.Background())
+	if err == nil {
+		t.Fatal("expected error for --json and -f together, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "json") || !strings.Contains(msg, "follow") {
+		t.Errorf("error %q should mention both 'json' and 'follow'", msg)
 	}
 }
 
