@@ -46,6 +46,14 @@ func (f *Fleet) workRoot() string {
 	return filepath.Join(homeDir(), ".flotilla", "work")
 }
 
+// LogsDir returns the resolved per-session logs root (exported for the daemon).
+func (f *Fleet) LogsDir() string { return f.logsRoot() }
+
+// HeadSHA returns the current HEAD SHA of agent name's engine-side clone.
+func (f *Fleet) HeadSHA(ctx context.Context, name string) (string, error) {
+	return gitops.HeadSHA(ctx, f.workDir(name))
+}
+
 // Spawn clones repoURL engine-side, provisions a devcontainer with the toolchain
 // Feature, injects the agent's token + config, installs the agent CLI, and
 // launches it. Git credentials never enter the container.

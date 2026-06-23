@@ -13,6 +13,22 @@ import (
 	"github.com/mickzijdel/flotilla/internal/forge"
 )
 
+func TestFleetHeadSHA(t *testing.T) {
+	f, fake := newTestFleet(t, &forge.Fake{})
+	seedClone(t, f, fake, "atlas", 1)
+	sha, err := f.HeadSHA(context.Background(), "atlas")
+	if err != nil || len(sha) != 40 {
+		t.Fatalf("HeadSHA: %q err=%v", sha, err)
+	}
+}
+
+func TestFleetLogsDirRespectsLogRoot(t *testing.T) {
+	f := &Fleet{LogRoot: "/custom/logs"}
+	if f.LogsDir() != "/custom/logs" {
+		t.Fatalf("got %q", f.LogsDir())
+	}
+}
+
 // runGit is a test helper (combined output on failure).
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
