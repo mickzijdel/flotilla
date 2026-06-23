@@ -32,6 +32,7 @@ type Fleet struct {
 	Backend        backend.Backend
 	BaseImage      string
 	WorkRoot       string      // host dir holding per-agent clones; defaults under ~/.flotilla
+	LogRoot        string      // host dir for per-session logs; defaults under ~/.flotilla
 	EgressFirewall bool        // default-deny egress via a per-agent proxy (default true via main)
 	EgressAllow    []string    // engine-wide extra allowlist entries
 	Forge          forge.Forge // PR creation; nil → push-only
