@@ -197,6 +197,12 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 			return fail(fmt.Errorf("install agent: %w", err))
 		}
 	}
+	// 3.1) Install the flotilla-fetch shim (root step, on PATH): lets the
+	// credential-less agent ask the engine to fetch origin via the daemon's
+	// request channel. Independent of the agent profile.
+	if err := installFetchShim(ctx, f.Backend, id); err != nil {
+		return fail(fmt.Errorf("install fetch shim: %w", err))
+	}
 	// 3.5) Egress firewall: confine the agent to the allowlist (fail-closed).
 	if f.EgressFirewall {
 		allow := egress.Compose(egress.BakedAllowlist(), prof.EgressAllow, f.EgressAllow)
