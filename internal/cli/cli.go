@@ -16,7 +16,7 @@ import (
 // BuildRoot wires the CLI against a Fleet.
 func BuildRoot(f *fleet.Fleet) *cobra.Command {
 	root := &cobra.Command{Use: "flotilla", Short: "Manage a fleet of autonomous coding agents"}
-	root.AddCommand(spawnCmd(f), listCmd(f), attachCmd(f), stopCmd(f), rmCmd(f), submitCmd(f), agentsCmd(), doctorCmd())
+	root.AddCommand(spawnCmd(f), listCmd(f), attachCmd(f), stopCmd(f), rmCmd(f), submitCmd(f), logsCmd(f), agentsCmd(), doctorCmd())
 	return root
 }
 
