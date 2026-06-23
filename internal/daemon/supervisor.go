@@ -20,10 +20,11 @@ type fleetAPI interface {
 
 // Supervisor reacts to agent done-signals: it auto-submits and records events.
 type Supervisor struct {
-	Fleet   fleetAPI
-	Backend backend.Backend // for the secondary die/stop event trigger (may be nil)
-	Paths   Paths
-	Now     func() time.Time // injectable clock (tests); nil ⇒ time.Now
+	Fleet    fleetAPI
+	Backend  backend.Backend // for the secondary die/stop event trigger (may be nil)
+	Paths    Paths
+	Registry *Registry        // request-handler seam (may be nil)
+	Now      func() time.Time // injectable clock (tests); nil ⇒ time.Now
 }
 
 func (s *Supervisor) now() time.Time {
@@ -102,6 +103,9 @@ func (s *Supervisor) scanOnce(ctx context.Context) {
 	for _, a := range agents {
 		if statusOf(a.LogDir) == "done" {
 			s.handle(ctx, a.Name)
+		}
+		if s.Registry != nil && a.LogDir != "" {
+			dispatchRequests(ctx, s.Registry, a.Name, a.LogDir)
 		}
 	}
 }
