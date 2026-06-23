@@ -37,16 +37,18 @@ func runAsUser(user, script string) []string {
 
 // launchScript cd's into the mounted workspace (the devcontainer's reported
 // remoteWorkspaceFolder, or a /workspaces/* glob fallback), sets HOME, sources
-// the injected env-file, loads the prompt from the prompt-file into
-// $FLOTILLA_PROMPT, then execs the agent launch.
-func launchScript(launch, home, workdir string) string {
+// the injected env-file, loads the prompt into $FLOTILLA_PROMPT, records
+// "running" in the session status file, runs the agent with stdout/stderr teed
+// to the mounted container.log, then records "done". It must NOT exec away the
+// wrapper shell — the post-run status write depends on the shell surviving.
+func launchScript(launch, home, workdir, sessionDir string) string {
 	cd := `cd "$(ls -d /workspaces/*/ 2>/dev/null | head -1)" 2>/dev/null`
 	if workdir != "" {
 		cd = fmt.Sprintf("cd '%s' 2>/dev/null", workdir)
 	}
 	return fmt.Sprintf(
-		`%s; export HOME=%s; set -a; . %s 2>/dev/null; set +a; export FLOTILLA_PROMPT="$(cat %s 2>/dev/null)"; exec %s`,
-		cd, home, agentEnvFile(home), agentPromptFile(home), launch)
+		`%s; export HOME=%s; set -a; . %s 2>/dev/null; set +a; export FLOTILLA_PROMPT="$(cat %s 2>/dev/null)"; echo running > %s/status 2>/dev/null; %s > %s/container.log 2>&1; echo done > %s/status 2>/dev/null`,
+		cd, home, agentEnvFile(home), agentPromptFile(home), sessionDir, launch, sessionDir, sessionDir)
 }
 
 // defaultDevcontainerJSON is the bundled config used when a repo ships none. It

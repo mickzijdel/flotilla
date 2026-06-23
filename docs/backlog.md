@@ -24,25 +24,26 @@ Roughly in dependency order:
   guides agents to commit before exit; `attach` auto-starts exited containers. See
   [spec](specs/2026-06-23-flotilla-submission-flow-design.md) and
   [plan](plans/2026-06-23-flotilla-submission-flow.md).
-1. **Logs / transcript mounts** — persist per-session logs + the agent transcript
-   (`TranscriptPath`) to a host dir under `~/.flotilla`, with a good date+repo naming convention;
-   consider a mounted read-only volume for live inspection. Spec drafted:
-   [logs/transcript-mounts](specs/2026-06-23-flotilla-logs-transcript-mounts-design.md). **Prerequisite
-   for the daemon** (its launch-wrapper `status` → `done` marker is the daemon's done-signal).
-2. **Daemon (supervisor)** — an optional long-running process that watches agents and reacts:
+- ~~**Logs / transcript mounts** — persist per-session logs + the agent transcript to a host dir
+  under `~/.flotilla/logs/<repo>/<YYYY-MM-DD-HHMM>-<agent>/` (live transcript bind-mount,
+  teed `container.log`, daemon-free `status`), plus `flotilla logs <agent> [-f]`.~~ **Done** — the
+  launch-wrapper `status` → `done` marker is the daemon's done-signal (the daemon item below builds
+  on it). See [spec](specs/2026-06-23-flotilla-logs-transcript-mounts-design.md) and
+  [plan](plans/2026-06-23-flotilla-logs-transcript-mounts.md).
+1. **Daemon (supervisor)** — an optional long-running process that watches agents and reacts:
    **auto-submit a PR on done**, an operator **inbox**, and the **request-handler seam** that on-demand
    fetch and the future agent question/answer channel plug into. Additive (CLI unchanged, works without
    it); socket/broker deferred to a later Option-C upgrade. Spec drafted:
    [daemon](specs/2026-06-23-flotilla-daemon-design.md). Sequencing: logs → daemon → fetch.
-3. **On-demand fetch/pull** — let a running agent (no creds in container) ask the engine to `git fetch`
+2. **On-demand fetch/pull** — let a running agent (no creds in container) ask the engine to `git fetch`
    `origin` into its bind-mounted clone mid-session; the new refs are live in the container instantly and
    the agent integrates locally. Fetch-only primitive; agent-initiated path rides the daemon's
    request-handler seam, plus a daemon-independent `flotilla fetch <agent>`. Spec drafted:
    [on-demand fetch](specs/2026-06-23-flotilla-on-demand-fetch-design.md).
-4. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
+3. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
    CLI is the primary control surface; the skill sits on top).
-5. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
-6. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
+4. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
+5. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
    is already in place. Docker Sandboxes / `sbx` could be added as an additional backend once it
    lands on Linux (see spec §7).
 
@@ -85,6 +86,10 @@ Roughly in dependency order:
 
 - `parseLabels` / `parseDockerTime` are only covered via the live Docker integration path; add unit
   tests with sample `docker ps` JSON.
+- End-to-end live transcript mount: a self-skipping `devcontainer up` test that spawns through the
+  full fleet path and asserts the transcript dir, `container.log`, and `status` appear on the host
+  (design spec §11). The new backend primitives (`CopyFrom`, `ReadConfig`) and all fleet logic are
+  unit-covered via `backend.Fake`; only the real-container live-mount round-trip is deferred.
 
 ## Repo hygiene
 

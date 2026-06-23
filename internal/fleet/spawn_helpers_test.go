@@ -28,26 +28,32 @@ func TestEnvFileContentSortedKV(t *testing.T) {
 	}
 }
 
-func TestLaunchScriptSourcesEnvFileThenExecs(t *testing.T) {
-	got := launchScript(`claude -p "$FLOTILLA_PROMPT"`, "/home/ubuntu", "/workspaces/atlas")
-	if !strings.Contains(got, agentEnvFile("/home/ubuntu")) {
-		t.Errorf("launchScript should source the env-file: %q", got)
-	}
-	if !strings.Contains(got, "exec claude -p ") {
-		t.Errorf("launchScript should exec the launch: %q", got)
-	}
+func TestLaunchScriptCdEnvAndWrapUp(t *testing.T) {
+	got := launchScript(`claude -p "$FLOTILLA_PROMPT"`, "/home/ubuntu", "/workspaces/atlas", "/flotilla/session")
 	if !strings.Contains(got, "cd '/workspaces/atlas'") {
-		t.Errorf("launchScript should cd into remoteWorkspaceFolder: %q", got)
+		t.Errorf("missing cd into workspace: %q", got)
 	}
 	if !strings.Contains(got, "export HOME=/home/ubuntu") {
-		t.Errorf("launchScript should set HOME: %q", got)
+		t.Errorf("missing HOME export: %q", got)
 	}
-	if !strings.Contains(got, "FLOTILLA_PROMPT") {
-		t.Errorf("launchScript should load the prompt env var: %q", got)
+	if !strings.Contains(got, "echo running > /flotilla/session/status") {
+		t.Errorf("missing running status write: %q", got)
 	}
-	// With empty workdir, fall back to the glob.
-	if g := launchScript("x", "/root", ""); !strings.Contains(g, "/workspaces/*/") {
-		t.Errorf("empty workdir should fall back to the glob: %q", g)
+	if !strings.Contains(got, "> /flotilla/session/container.log 2>&1") {
+		t.Errorf("missing container.log redirect: %q", got)
+	}
+	if !strings.Contains(got, "echo done > /flotilla/session/status") {
+		t.Errorf("missing done status write: %q", got)
+	}
+	if strings.Contains(got, "exec ") {
+		t.Errorf("launch must not exec away the wrapper (status write would be lost): %q", got)
+	}
+}
+
+func TestLaunchScriptWorkspaceGlobFallback(t *testing.T) {
+	g := launchScript("x", "/root", "", "/flotilla/session")
+	if !strings.Contains(g, "/workspaces/*/") {
+		t.Errorf("missing workspace glob fallback: %q", g)
 	}
 }
 

@@ -25,6 +25,7 @@ type Agent struct {
 	Status  string    `json:"status"`
 	Created time.Time `json:"created"`
 	ID      string    `json:"id"`
+	LogDir  string    `json:"logDir,omitempty"`
 }
 
 // Fleet orchestrates agents over a Backend.
@@ -32,6 +33,7 @@ type Fleet struct {
 	Backend        backend.Backend
 	BaseImage      string
 	WorkRoot       string      // host dir holding per-agent clones; defaults under ~/.flotilla
+	LogRoot        string      // host dir for per-session logs; defaults under ~/.flotilla
 	EgressFirewall bool        // default-deny egress via a per-agent proxy (default true via main)
 	EgressAllow    []string    // engine-wide extra allowlist entries
 	Forge          forge.Forge // PR creation; nil → push-only
@@ -85,15 +87,41 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		}
 	}
 
+	// Per-session host log dir: live transcript mount + container.log + status.
+	session := filepath.Join(f.logsRoot(), repoSlug(repoURL), sessionDirName(name, time.Now()))
+	transcript := filepath.Join(session, "transcript")
+	if err := os.MkdirAll(transcript, 0o777); err != nil {
+		_ = os.RemoveAll(dest)
+		return Agent{}, fmt.Errorf("create log dir: %w", err)
+	}
+	_ = os.Chmod(session, 0o777)
+	_ = os.Chmod(transcript, 0o777)
+
+	// Always mount the session dir at a fixed, user-agnostic path (container.log
+	// + status ride here). Add the live transcript mount only when we can resolve
+	// the run user's home before `up` (Docker needs an absolute container path).
+	mounts := []backend.Mount{{Source: session, Target: containerSessionDir}}
+	liveMount := false
+	mountUser := ""
+	if cfg, err := f.Backend.ReadConfig(ctx, dest); err == nil && cfg.RemoteUser != "" {
+		if target := transcriptTarget(prof.TranscriptPath, homeForUser(cfg.RemoteUser)); target != "" {
+			mounts = append(mounts, backend.Mount{Source: transcript, Target: target})
+			liveMount = true
+			mountUser = cfg.RemoteUser
+		}
+	}
+
 	res, err := f.Backend.Up(ctx, backend.UpOpts{
 		Name:               name,
 		WorkspaceFolder:    dest,
 		AdditionalFeatures: map[string]any{"./flotilla-toolchain": map[string]any{}},
+		Mounts:             mounts,
 		Labels: map[string]string{
 			backend.LabelAgent:   name,
 			backend.LabelRepo:    repoURL,
 			backend.LabelCreated: time.Now().UTC().Format(time.RFC3339),
 			backend.LabelHost:    "local",
+			backend.LabelLogDir:  session,
 		},
 	})
 	if err != nil {
@@ -106,6 +134,20 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		user = "root"
 	}
 	home := homeForUser(user)
+
+	// Make the mounted session tree writable by the run user (uid may differ
+	// from the host). Best-effort.
+	_ = f.Backend.Exec(ctx, id, []string{"chown", "-R", user, containerSessionDir})
+
+	// Write a copy-fallback sentinel when the transcript wasn't live-mounted at the
+	// right place: either we couldn't resolve a user pre-up, or the real post-up run
+	// user differs from the one we mounted for (so the live mount points at the wrong
+	// home). The lazy copy-out in Fleet.Logs then recovers the transcript after exit.
+	if (!liveMount || user != mountUser) && strings.TrimSpace(prof.TranscriptPath) != "" {
+		if target := transcriptTarget(prof.TranscriptPath, home); target != "" {
+			_ = os.WriteFile(filepath.Join(session, ".copy-fallback"), []byte(target+"\n"), 0o644)
+		}
+	}
 
 	inj := &injector{be: f.Backend, id: id, user: user}
 
@@ -155,7 +197,7 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 		}
 	}
 	// 4) Launch the agent as the non-root run user, backgrounded (exec-into-idle).
-	if err := f.Backend.ExecDetached(ctx, id, runAsUser(user, launchScript(prof.RenderLaunch(), home, res.RemoteWorkspaceFolder))); err != nil {
+	if err := f.Backend.ExecDetached(ctx, id, runAsUser(user, launchScript(prof.RenderLaunch(), home, res.RemoteWorkspaceFolder, containerSessionDir))); err != nil {
 		return fail(fmt.Errorf("launch agent: %w", err))
 	}
 
@@ -173,7 +215,7 @@ func (f *Fleet) List(ctx context.Context) ([]Agent, error) {
 		if c.Labels[backend.LabelProxy] != "" {
 			continue // egress proxy sidecar, not an agent
 		}
-		out = append(out, Agent{Name: c.Name, Repo: c.Repo, Status: c.Status, Created: c.Created, ID: c.ID})
+		out = append(out, Agent{Name: c.Name, Repo: c.Repo, Status: c.Status, Created: c.Created, ID: c.ID, LogDir: c.Labels[backend.LabelLogDir]})
 	}
 	return out, nil
 }

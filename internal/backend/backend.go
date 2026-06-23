@@ -16,6 +16,9 @@ const (
 	// flotilla.agent scope can find them, so the fleet layer must exclude
 	// LabelProxy-tagged containers from agent listings/resolution.
 	LabelProxy = "flotilla.proxy"
+	// LabelLogDir records the host session-log dir for an agent so `flotilla
+	// logs` can find container.log without date math.
+	LabelLogDir = "flotilla.logdir"
 )
 
 // Mount is a host->container bind mount.
@@ -60,6 +63,7 @@ type UpOpts struct {
 	WorkspaceFolder    string         // engine clone dir → devcontainer --workspace-folder
 	AdditionalFeatures map[string]any // e.g. {"./flotilla-toolchain": {}} (relative to .devcontainer/)
 	Labels             map[string]string
+	Mounts             []Mount // host->container bind mounts added at `up`
 }
 
 // UpResult is the outcome of provisioning a devcontainer.
@@ -67,6 +71,12 @@ type UpResult struct {
 	ID                    string
 	RemoteUser            string
 	RemoteWorkspaceFolder string
+}
+
+// ConfigInfo is the subset of a devcontainer's merged configuration the engine
+// needs before `up` (to resolve the live transcript mount target).
+type ConfigInfo struct {
+	RemoteUser string
 }
 
 // Backend abstracts the compute substrate (local Docker for v1).
@@ -79,6 +89,8 @@ type Backend interface {
 	List(ctx context.Context, labelFilter map[string]string) ([]Container, error)
 	AttachInfo(ctx context.Context, id string) (AttachInfo, error)
 	Up(ctx context.Context, opts UpOpts) (UpResult, error)
+	ReadConfig(ctx context.Context, workspaceFolder string) (ConfigInfo, error)
+	CopyFrom(ctx context.Context, id, srcPath, hostPath string) error
 	ExecDetached(ctx context.Context, id string, cmd []string) error
 	CopyTo(ctx context.Context, id, hostPath, destPath string) error
 	NetworkCreate(ctx context.Context, name string, internal bool) error
