@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mickzijdel/flotilla/internal/backend"
@@ -54,6 +55,38 @@ func newTestFleet(t *testing.T, fk *forge.Fake) (*Fleet, *backend.Fake) {
 	fake := backend.NewFake()
 	f := &Fleet{Backend: fake, WorkRoot: t.TempDir(), Forge: fk}
 	return f, fake
+}
+
+func TestSubmitErrorsWhenCloneMissing(t *testing.T) {
+	// The container resolves but its host-side clone is gone: give a clear error
+	// instead of letting raw git output surface from Inspect.
+	fk := &forge.Fake{}
+	f, fake := newTestFleet(t, fk)
+	ctx := context.Background()
+	id, _ := fake.Create(ctx, backend.CreateOpts{Labels: map[string]string{backend.LabelAgent: "atlas"}})
+	_ = fake.Stop(ctx, id) // exited, but no clone seeded under WorkRoot
+
+	_, err := f.Submit(ctx, "atlas", false)
+	if err == nil || !strings.Contains(err.Error(), "no workspace clone") {
+		t.Errorf("want 'no workspace clone' error, got %v", err)
+	}
+}
+
+func TestSubmitRefusesCreatedContainer(t *testing.T) {
+	// A container that never ran (status "created") is not a finished agent and
+	// must be refused without --force, just like a running one.
+	fk := &forge.Fake{}
+	f, fake := newTestFleet(t, fk)
+	seedClone(t, f, fake, "atlas", 1)
+	cs, _ := fake.List(context.Background(), map[string]string{backend.LabelAgent: "atlas"})
+	_ = fake.SetStatus(cs[0].ID, "created")
+
+	if _, err := f.Submit(context.Background(), "atlas", false); err == nil {
+		t.Error("expected refusal for a non-exited (created) container")
+	}
+	if _, err := f.Submit(context.Background(), "atlas", true); err != nil {
+		t.Errorf("--force should bypass the status gate: %v", err)
+	}
 }
 
 func TestSubmitPushesAndReturnsPR(t *testing.T) {

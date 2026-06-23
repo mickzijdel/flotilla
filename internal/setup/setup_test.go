@@ -76,7 +76,8 @@ func TestClaudeSetupWritesStopHookCommit(t *testing.T) {
 	if settings == "" {
 		t.Fatal("no settings.json written")
 	}
-	if !strings.Contains(settings, "\"Stop\"") || !strings.Contains(settings, "git commit") {
-		t.Errorf("settings.json missing Stop/commit hook: %s", settings)
+	wantCmd := "git add -A && (git diff --cached --quiet || git commit -m 'flotilla: wrap-up commit') || true"
+	if !strings.Contains(settings, "\"Stop\"") || !strings.Contains(settings, wantCmd) {
+		t.Errorf("settings.json missing Stop hook with the full commit command: %s", settings)
 	}
 }

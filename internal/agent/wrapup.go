@@ -9,9 +9,11 @@ const DefaultWrapUp = "Before you finish, commit all your changes with clear, " 
 	"leave uncommitted work; anything uncommitted will be discarded and the submission rejected."
 
 // WrapUpText returns the effective wrap-up contract: the profile's override, the
-// default when unset, or "" when explicitly disabled with the "-" sentinel.
+// default when unset, or "" when explicitly disabled with the "-" sentinel. The
+// unset/disable checks are trim-insensitive so a whitespace-only value falls back
+// to the default rather than being silently dropped by PromptWithWrapUp's trim.
 func (p Profile) WrapUpText() string {
-	switch p.WrapUp {
+	switch strings.TrimSpace(p.WrapUp) {
 	case "":
 		return DefaultWrapUp
 	case "-":

@@ -53,16 +53,16 @@ func TestSubmitCmdPrintsPRURL(t *testing.T) {
 	_ = fake.Stop(ctx, id)
 
 	root2 := BuildRoot(f)
-	var out bytes.Buffer
-	root2.SetOut(&out)
-	root2.SetErr(&out)
+	var stdout, stderr bytes.Buffer
+	root2.SetOut(&stdout)
+	root2.SetErr(&stderr)
 	root2.SetArgs([]string{"submit", "atlas", "--json"})
 	if err := root2.ExecuteContext(ctx); err != nil {
-		t.Fatalf("submit: %v: %s", err, out.String())
+		t.Fatalf("submit: %v: %s", err, stderr.String())
 	}
 	var sub fleet.Submission
-	if err := json.Unmarshal(out.Bytes(), &sub); err != nil {
-		t.Fatalf("decode JSON %q: %v", out.String(), err)
+	if err := json.Unmarshal(stdout.Bytes(), &sub); err != nil {
+		t.Fatalf("decode JSON %q: %v", stdout.String(), err)
 	}
 	if sub.PRURL != "https://h/pr/9" || !strings.Contains(sub.Branch, "flotilla/atlas") {
 		t.Errorf("got %+v", sub)

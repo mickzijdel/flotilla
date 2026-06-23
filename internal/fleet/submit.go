@@ -4,6 +4,7 @@ package fleet
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/mickzijdel/flotilla/internal/forge"
@@ -33,10 +34,13 @@ func (f *Fleet) Submit(ctx context.Context, name string, force bool) (Submission
 		return Submission{}, err
 	}
 	if c.Status != "exited" && !force {
-		return Submission{}, fmt.Errorf("agent %q is still running; wait for it to finish or pass --force", name)
+		return Submission{}, fmt.Errorf("agent %q is %s, not finished; wait for it to exit or pass --force", name, c.Status)
 	}
 
 	dir := f.workDir(name)
+	if _, err := os.Stat(dir); err != nil {
+		return Submission{}, fmt.Errorf("no workspace clone for agent %q at %s (was it removed?)", name, dir)
+	}
 	st, err := gitops.Inspect(ctx, dir)
 	if err != nil {
 		return Submission{}, err

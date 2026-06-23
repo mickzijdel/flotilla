@@ -46,3 +46,20 @@ func TestAttachAutoStartsExitedContainer(t *testing.T) {
 		t.Errorf("Status = %q, want running (attach should auto-start)", cs[0].Status)
 	}
 }
+
+func TestAttachAutoStartsNonRunningContainer(t *testing.T) {
+	// A container that was created but never started (status "created") is also
+	// not execable; attach must start it, not just when it has cleanly "exited".
+	fake := backend.NewFake()
+	ctx := context.Background()
+	_, _ = fake.Create(ctx, backend.CreateOpts{Labels: map[string]string{backend.LabelAgent: "atlas"}})
+
+	f := &Fleet{Backend: fake}
+	if _, err := f.Attach(ctx, "atlas"); err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	cs, _ := fake.List(ctx, map[string]string{backend.LabelAgent: "atlas"})
+	if cs[0].Status != "running" {
+		t.Errorf("Status = %q, want running (attach should start a non-running container)", cs[0].Status)
+	}
+}
