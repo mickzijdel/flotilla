@@ -93,4 +93,8 @@ func TestRemoteUserFromMergedConfig(t *testing.T) {
 	if got := remoteUserFromConfig("no json here"); got != "" {
 		t.Errorf("remoteUserFromConfig(no json) = %q, want empty", got)
 	}
+	out2 := "{\"remoteUser\":\"vscode\"}\n"
+	if got := remoteUserFromConfig(out2); got != "vscode" {
+		t.Errorf("remoteUserFromConfig top-level = %q, want vscode", got)
+	}
 }

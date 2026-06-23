@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-// CopyCall records a CopyTo for assertions (Content is read from HostPath).
+// CopyCall records a CopyTo or CopyFrom for assertions. HostPath is always the
+// host-side path; DestPath is always the container-side path (the copy
+// destination for CopyTo, the copy source for CopyFrom). Content is the bytes
+// read from the host file (CopyTo only).
 type CopyCall struct {
 	ID, HostPath, DestPath string
 	Content                []byte
