@@ -39,20 +39,24 @@ Roughly in dependency order:
   request-handler seam scaffolded (no real handler yet — that's on-demand fetch). Socket/broker deferred
   to a later Option-C upgrade. See [spec](specs/2026-06-23-flotilla-daemon-design.md) and
   [plan](plans/2026-06-23-flotilla-daemon.md).
-1. **On-demand fetch/pull** — let a running agent (no creds in container) ask the engine to `git fetch`
-   `origin` into its bind-mounted clone mid-session; the new refs are live in the container instantly and
-   the agent integrates locally. Fetch-only primitive; agent-initiated path rides the daemon's
-   request-handler seam, plus a daemon-independent `flotilla fetch <agent>`. Spec drafted:
-   [on-demand fetch](specs/2026-06-23-flotilla-on-demand-fetch-design.md).
-2. **Agent question/answer channel** — a running agent asks its operator a question
+- ~~**On-demand fetch/pull** — let a running agent (no creds in container) ask the engine to `git fetch`
+  `origin` into its bind-mounted clone mid-session; the new refs are live in the container instantly and
+  the agent integrates locally.~~ **Done** — fetch-only primitive (`gitops.Fetch` =
+  `git fetch --prune origin`, working-tree-neutral). Two triggers, one primitive: daemon-independent
+  `flotilla fetch <agent>` (`Fleet.Fetch`, host-side), and an in-container `flotilla-fetch` shim that
+  rides the daemon's request-handler seam (terminal `fetch` handler → `fetch_done` inbox event). Shim
+  injected on `PATH` at spawn; a constant fetch-awareness preamble is appended to every agent prompt.
+  See [spec](specs/2026-06-23-flotilla-on-demand-fetch-design.md) and
+  [plan](plans/2026-06-24-flotilla-on-demand-fetch.md).
+1. **Agent question/answer channel** — a running agent asks its operator a question
    (`flotilla-ask "…"`) and blocks for the reply; the operator answers with `flotilla answer <agent>
    "…"`. Rides the daemon's request-handler seam (notify via inbox + `flotilla questions`), realises
    the deferred **`blocked`** status, and the answer path is daemon-independent. Spec drafted:
    [agent question channel](specs/2026-06-23-flotilla-agent-question-channel-design.md).
-3. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
+2. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
    CLI is the primary control surface; the skill sits on top).
-4. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
-5. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
+3. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
+4. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
    is already in place. Docker Sandboxes / `sbx` could be added as an additional backend once it
    lands on Linux (see spec §7).
 

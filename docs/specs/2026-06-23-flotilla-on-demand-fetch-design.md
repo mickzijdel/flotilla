@@ -1,7 +1,7 @@
 # Flotilla — On-demand fetch/pull for running agents
 
 **Date:** 2026-06-23
-**Status:** Draft for review
+**Status:** Implemented (2026-06-24) — see [plan](../plans/2026-06-24-flotilla-on-demand-fetch.md).
 **Scope:** Backlog item #2 ("On-demand fetch/pull"). Lets a running agent — which holds **no git
 credentials** — get the engine to re-fetch `origin` mid-session, so it can pick up base-branch changes
 without restarting. Builds directly on the **daemon's request-handler seam**

@@ -4,7 +4,7 @@ Flotilla is a manager for a fleet of sandboxed, containerized coding agents — 
 
 ## Status
 
-The CLI lifecycle (spawn/list/attach/stop/rm/submit/logs) is functional, and a spawned agent is now actually runnable: the engine provisions the repo's devcontainer with a vendored toolchain Feature (`devcontainer up --additional-features`), injects the agent token via a `0600` env-file and config into the container, and launches the agent — with git credentials never entering the container. The egress firewall and submission flow are both shipped. `flotilla submit <agent>` pushes the agent's commits to a `flotilla/<agent>` branch (force-with-lease) and opens or updates a PR via the `gh` CLI (`gh pr create --fill`), with a push-only fallback that prints a GitHub compare URL when `gh` is absent or unauthenticated. Submit is status-gated: it refuses a still-running agent (override with `--force`) and refuses a dirty working tree or zero new commits. Git credentials never enter the container — the engine does all push and PR work from the host-side clone. A `wrap_up` prompt contract (and a Claude Stop hook) guides agents to commit their work before exiting. `attach` now auto-starts an exited container. Per-session logs persist under `~/.flotilla/logs/<repo>/<YYYY-MM-DD-HHMM>-<agent>/`: a live transcript bind-mount, a teed `container.log`, and a daemon-free `status` file. An optional [daemon](#daemon-optional-supervisor) supervisor auto-submits a PR when an agent finishes and records events to an operator inbox — the CLI is unchanged and works without it.
+The CLI lifecycle (spawn/list/attach/stop/rm/submit/logs) is functional, and a spawned agent is now actually runnable: the engine provisions the repo's devcontainer with a vendored toolchain Feature (`devcontainer up --additional-features`), injects the agent token via a `0600` env-file and config into the container, and launches the agent — with git credentials never entering the container. The egress firewall and submission flow are both shipped. `flotilla submit <agent>` pushes the agent's commits to a `flotilla/<agent>` branch (force-with-lease) and opens or updates a PR via the `gh` CLI (`gh pr create --fill`), with a push-only fallback that prints a GitHub compare URL when `gh` is absent or unauthenticated. Submit is status-gated: it refuses a still-running agent (override with `--force`) and refuses a dirty working tree or zero new commits. Git credentials never enter the container — the engine does all push and PR work from the host-side clone. A `wrap_up` prompt contract (and a Claude Stop hook) guides agents to commit their work before exiting. `attach` now auto-starts an exited container. Per-session logs persist under `~/.flotilla/logs/<repo>/<YYYY-MM-DD-HHMM>-<agent>/`: a live transcript bind-mount, a teed `container.log`, and a daemon-free `status` file. An optional [daemon](#daemon-optional-supervisor) supervisor auto-submits a PR when an agent finishes and records events to an operator inbox — the CLI is unchanged and works without it. On-demand fetch lets a running, credential-less agent pick up base-branch changes mid-session: it runs `flotilla-fetch` in the container and the engine fetches `origin` into the bind-mounted clone (so the new refs are live instantly); the operator can do the same from the host with `flotilla fetch <agent>`.
 
 ## Installation
 
@@ -32,10 +32,13 @@ List the fleet (add `--json` for machine-readable output), print attach info (a 
 ./bin/flotilla rm <name>
 ./bin/flotilla submit <name>
 ./bin/flotilla submit <name> --json  # machine-readable output
+./bin/flotilla fetch <name>          # re-fetch origin into the agent's clone (--json available)
 ./bin/flotilla logs <name>           # stream container.log (-f follows until done)
 ```
 
 `submit` pushes the agent's commits to a `flotilla/<name>` branch and opens a PR via `gh` (or prints a compare URL if `gh` is unavailable). It refuses a still-running agent unless `--force` is passed. Add `--json` for machine-readable output (matches `list --json` style).
+
+`fetch` runs `git fetch --prune origin` in the agent's engine-side clone. Because the clone is bind-mounted into the container, the refreshed `origin/*` refs are live inside it instantly — the agent then integrates locally (`git merge`/`git rebase origin/<base>`). It is fetch-only (never touches the working tree) and daemon-independent. A running agent can trigger the same fetch itself by running `flotilla-fetch` in the container (it has no git credentials, so the engine does the fetch on its behalf via the daemon).
 
 `logs` streams the agent's `container.log` from `~/.flotilla/logs/<repo>/<date>-<name>/`. Pass `-f` to follow the log live until the agent exits.
 
@@ -53,7 +56,8 @@ Run `flotilla doctor` to check prerequisites; it also reports an advisory `gh` a
 ```
 
 - **Auto-submit on done.** When an agent's launch-wrapper writes `status` → `done`, the daemon reuses `flotilla submit` (force-with-lease push + PR) on a clean tree with ≥1 commit. A dirty tree or zero commits is recorded as a skip — it never force-commits. Idempotent via a per-agent last-submitted SHA, so a daemon restart won't re-open a PR.
-- **Inbox.** Notable events (`agent_done`, `pr_opened`, `pr_updated`, `submit_skipped`) are appended to `~/.flotilla/inbox.jsonl`; read them with `flotilla inbox` (`--watch` tails).
+- **Inbox.** Notable events (`agent_done`, `pr_opened`, `pr_updated`, `submit_skipped`, `fetch_done`) are appended to `~/.flotilla/inbox.jsonl`; read them with `flotilla inbox` (`--watch` tails).
+- **On-demand fetch.** The daemon services an in-container `flotilla-fetch` request by fetching `origin` into that agent's clone and recording a `fetch_done` event — so a sandboxed agent can refresh its base branch without credentials.
 - **Lifecycle.** Self-daemonizing (double-forks, pidfile, single-instanced via `flock`); `flotilla spawn` best-effort auto-starts it. `systemd --user` users can run the non-forking `flotilla daemon run` instead. On a `flotilla` upgrade the running daemon re-execs itself from the new binary.
 - **Everything works without it** — you only lose the reactive behaviours; `flotilla submit` stays the manual fallback.
 

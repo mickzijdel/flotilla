@@ -16,6 +16,7 @@ const (
 	EventPROpened      = "pr_opened"
 	EventPRUpdated     = "pr_updated"
 	EventSubmitSkipped = "submit_skipped"
+	EventFetchDone     = "fetch_done"
 )
 
 // InboxEvent is one operator-facing notable event.

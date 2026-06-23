@@ -16,6 +16,7 @@ type fleetAPI interface {
 	Submit(ctx context.Context, name string, force bool) (fleet.Submission, error)
 	HeadSHA(ctx context.Context, name string) (string, error)
 	List(ctx context.Context) ([]fleet.Agent, error)
+	Fetch(ctx context.Context, name string) error
 }
 
 // Supervisor reacts to agent done-signals: it auto-submits and records events.
@@ -137,10 +138,35 @@ func (s *Supervisor) handleEvent(ctx context.Context, ev backend.Event) {
 	}
 }
 
+// registerHandlers wires the supervisor's request handlers onto the §9 seam.
+// No-op when there is no registry (the supervisor still does auto-submit).
+func (s *Supervisor) registerHandlers() {
+	if s.Registry == nil {
+		return
+	}
+	s.Registry.Register("fetch", s.fetchHandler)
+}
+
+// fetchHandler services an agent-initiated fetch request: it re-fetches origin
+// into that agent's engine-side clone (Fleet.Fetch) and notes the outcome in the
+// inbox. The action is fixed — fetch that one agent's repo — never arbitrary
+// exec, never another agent's clone, never a push (trust boundary, spec §10).
+func (s *Supervisor) fetchHandler(ctx context.Context, agent string, _ Request) Response {
+	if err := s.Fleet.Fetch(ctx, agent); err != nil {
+		s.emit(agent, EventFetchDone, "fetch failed: "+err.Error(), nil)
+		return Response{Status: "error", Message: err.Error()}
+	}
+	s.emit(agent, EventFetchDone, "fetched origin", nil)
+	// Terminal ok (spec §6): the dispatch loop writes {"status":"ok"} to
+	// responses/<id>.json; the shim substring-matches "status":"ok".
+	return Response{Status: "ok"}
+}
+
 // Run scans on startup, then ticks every interval (re-scanning, draining the
 // Backend event stream, and re-checking the binary version) until ctx is
 // cancelled.
 func (s *Supervisor) Run(ctx context.Context, interval time.Duration) error {
+	s.registerHandlers()
 	s.scanOnce(ctx) // catch agents that finished while the daemon was down
 
 	var events <-chan backend.Event

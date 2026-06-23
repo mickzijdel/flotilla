@@ -62,8 +62,13 @@ func TestSpawnDisabledWrapUpOmitsContract(t *testing.T) {
 			if strings.Contains(content, "Flotilla submission contract") {
 				t.Errorf("wrap-up contract present despite '-' sentinel; got: %q", content)
 			}
-			if content != "do the task" {
-				t.Errorf("prompt with disabled wrap-up should equal user prompt unchanged; got: %q", content)
+			if !strings.Contains(content, "do the task") {
+				t.Errorf("user prompt dropped; got: %q", content)
+			}
+			// The fetch hint is always appended (independent of the wrap-up
+			// contract), so a disabled wrap-up no longer means an unchanged prompt.
+			if !strings.Contains(content, "flotilla-fetch") {
+				t.Errorf("fetch hint should always be present; got: %q", content)
 			}
 			return
 		}
