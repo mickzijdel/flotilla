@@ -23,6 +23,7 @@ type Profile struct {
 	TranscriptPath string   `toml:"transcript_path"`
 	EgressAllow    []string `toml:"egress_allow"`
 	DoneSignal     string   `toml:"done_signal"`
+	WrapUp         string   `toml:"wrap_up"`
 }
 
 // Parse decodes a profile from TOML bytes.

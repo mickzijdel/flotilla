@@ -66,3 +66,17 @@ func TestUnknownSetupHandlerErrors(t *testing.T) {
 		t.Errorf("want unknown-handler error, got %v", err)
 	}
 }
+
+func TestClaudeSetupWritesStopHookCommit(t *testing.T) {
+	r := newRec()
+	if err := Run(context.Background(), r, agent.Profile{Setup: "builtin:claude"}, "/home/ubuntu"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	settings := r.writes["/home/ubuntu/.claude/settings.json"]
+	if settings == "" {
+		t.Fatal("no settings.json written")
+	}
+	if !strings.Contains(settings, "\"Stop\"") || !strings.Contains(settings, "git commit") {
+		t.Errorf("settings.json missing Stop/commit hook: %s", settings)
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/mickzijdel/flotilla/internal/backend"
 	"github.com/mickzijdel/flotilla/internal/egress"
 	"github.com/mickzijdel/flotilla/internal/feature"
+	"github.com/mickzijdel/flotilla/internal/forge"
 	"github.com/mickzijdel/flotilla/internal/gitops"
 	"github.com/mickzijdel/flotilla/internal/naming"
 	"github.com/mickzijdel/flotilla/internal/setup"
@@ -30,9 +31,10 @@ type Agent struct {
 type Fleet struct {
 	Backend        backend.Backend
 	BaseImage      string
-	WorkRoot       string   // host dir holding per-agent clones; defaults under ~/.flotilla
-	EgressFirewall bool     // default-deny egress via a per-agent proxy (default true via main)
-	EgressAllow    []string // engine-wide extra allowlist entries
+	WorkRoot       string      // host dir holding per-agent clones; defaults under ~/.flotilla
+	EgressFirewall bool        // default-deny egress via a per-agent proxy (default true via main)
+	EgressAllow    []string    // engine-wide extra allowlist entries
+	Forge          forge.Forge // PR creation; nil → push-only
 }
 
 func (f *Fleet) workRoot() string {
@@ -132,7 +134,7 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	}
 	// Prompt: written out-of-band (file via docker cp, never argv) and loaded
 	// into $FLOTILLA_PROMPT by the launch wrapper, so metacharacters are inert.
-	if err := inj.WriteFile(ctx, []byte(prompt), agentPromptFile(home)); err != nil {
+	if err := inj.WriteFile(ctx, []byte(agent.PromptWithWrapUp(prompt, prof.WrapUpText())), agentPromptFile(home)); err != nil {
 		return fail(fmt.Errorf("inject prompt: %w", err))
 	}
 	// 2) Config: setup handler / declarative config_mounts, in the run user's home.
@@ -190,11 +192,18 @@ func (f *Fleet) resolve(ctx context.Context, name string) (backend.Container, er
 	return backend.Container{}, fmt.Errorf("no agent named %q", name)
 }
 
-// Attach returns attach info for a named agent.
+// Attach returns attach info for a named agent, auto-starting it if it exited
+// (the process-exit done-signal leaves the container stopped but present, and
+// docker exec needs it running).
 func (f *Fleet) Attach(ctx context.Context, name string) (backend.AttachInfo, error) {
 	c, err := f.resolve(ctx, name)
 	if err != nil {
 		return backend.AttachInfo{}, err
+	}
+	if c.Status == "exited" {
+		if err := f.Backend.Start(ctx, c.ID); err != nil {
+			return backend.AttachInfo{}, fmt.Errorf("start exited agent %q: %w", name, err)
+		}
 	}
 	return f.Backend.AttachInfo(ctx, c.ID)
 }
