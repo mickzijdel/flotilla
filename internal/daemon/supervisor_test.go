@@ -14,10 +14,20 @@ import (
 
 // fakeSubmitter records Submit calls and returns scripted results per agent.
 type fakeSubmitter struct {
-	heads   map[string]string
-	results map[string]fleet.Submission
-	errs    map[string]error
-	calls   []string
+	heads    map[string]string
+	results  map[string]fleet.Submission
+	errs     map[string]error
+	calls    []string
+	fetches  []string
+	fetchErr map[string]error
+}
+
+func (f *fakeSubmitter) Fetch(_ context.Context, name string) error {
+	f.fetches = append(f.fetches, name)
+	if f.fetchErr != nil {
+		return f.fetchErr[name]
+	}
+	return nil
 }
 
 func (f *fakeSubmitter) HeadSHA(_ context.Context, name string) (string, error) {
