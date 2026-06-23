@@ -103,12 +103,15 @@ Registered on the daemon's §9 dispatch loop for `type: "fetch"`.
 1. The agent's `flotilla-fetch` shim writes `/flotilla/session/requests/<id>.json`:
    `{"type":"fetch","id":"<id>"}` (written atomically — tmp file + rename — so the daemon never reads a
    partial request).
-2. The daemon (watching `requests/` via fsnotify) dispatches to the `fetch` handler, which maps the
-   session dir → that agent's clone `dest` (via the `flotilla.logdir`/agent labels) and runs
-   `gitops.Fetch(ctx, dest)`.
-3. The daemon writes `/flotilla/session/responses/<id>.json` atomically:
-   `{"status":"ok"}` or `{"status":"error","error":"<git stderr>"}`. The presence of the response file
-   is itself the "serviced" marker, so each `<id>` is handled exactly once.
+2. The daemon's dispatch loop (`daemon.dispatchRequests`, which **scans `requests/` each supervisor
+   tick** for any `<id>.json` lacking a `responses/<id>.json`) routes the request to the registered
+   `fetch` `Handler`, which maps the session dir → that agent's clone `dest` (via the
+   `flotilla.logdir`/agent labels) and runs `gitops.Fetch(ctx, dest)`.
+3. The handler returns a `daemon.Response` — `{Status:"ok"}` on success, or
+   `{Status:"error", Message:"<git stderr>"}` on failure — which the dispatch loop writes atomically to
+   `/flotilla/session/responses/<id>.json` (the built `Response` envelope is `{status, message, data}`,
+   not a bespoke `error` field). The presence of the response file is itself the "serviced" marker, so
+   each `<id>` is handled exactly once (`dispatchRequests` skips ids that already have a response).
 4. The daemon also appends a `fetch_done` event to the inbox (daemon-spec §7) so the operator sees that
    the agent refreshed.
 
@@ -192,7 +195,7 @@ whole reason fetch-only is the right primitive.
 | No clone at `dest` | clear error: "no workspace clone for agent %q". |
 | `git fetch` fails (network/auth/ownership) | surface git stderr verbatim; `safe.directory` always set. |
 | Shim, daemon not running | request file sits unserviced; shim times out with "is the daemon running?" (it's auto-started on spawn, so this is rare). The operator can still run `flotilla fetch` (path b). |
-| Daemon handler can't map session → clone | writes `{"status":"error",...}`; inbox `fetch_done` notes the failure. |
+| Daemon handler can't map session → clone | returns `Response{Status:"error", Message:...}` (loop writes it to `responses/<id>.json`); inbox `fetch_done` notes the failure. |
 | Concurrent git lock | git's non-zero surfaces to the shim/CLI; safe to retry. |
 
 ## 12. Testing

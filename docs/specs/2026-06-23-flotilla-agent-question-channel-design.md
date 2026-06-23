@@ -27,7 +27,7 @@ just a new request `type` and the human-in-the-loop reply path.
 | # | Area | Decision |
 |---|---|---|
 | 1 | Transport | **Reuse the daemon §9 seam.** New request `type: "question"`. No new channel, mount, or socket. |
-| 2 | Handler shape | **Non-terminal handler.** Unlike `fetch` (which answers immediately), the `question` handler does *not* produce the response — it notifies the operator and waits. The response is produced **out-of-band** by `flotilla answer`. |
+| 2 | Handler shape | **Non-terminal handler.** Unlike `fetch` (which answers immediately), the `question` handler does *not* produce the response — it returns the **`deferred`** sentinel, notifies the operator, and waits; the response is produced **out-of-band** by `flotilla answer`. This needs a small seam change (the shipped dispatch loop always writes a response) — see §4.1. |
 | 3 | Answer path | **`flotilla answer <agent> [--id <id>] "text"`** writes the response file **directly** into the agent's session dir (daemon-independent, like `flotilla fetch`'s host path). The agent's shim is already blocking on it. |
 | 4 | Discovery | **`flotilla questions [--json] [--watch]`** lists pending questions, derived purely from the filesystem (a `requests/*.json` with no matching `responses/*.json`), so it works even if the daemon is down. |
 | 5 | Blocked status | A pending question makes the agent **`blocked`** — surfaced as a derived status in `flotilla list`/`status`, computed from the filesystem. This is the realisation of the logs spec's deferred `blocked` state. |
@@ -38,7 +38,7 @@ just a new request `type` and the human-in-the-loop reply path.
 
 ```
   container: `flotilla-ask "Should I drop the legacy table?"`
-        │  write requests/<id>.json {"type":"question","text":...}   (atomic: tmp+rename)
+        │  write requests/<id>.json {"type":"question","data":{"text":...}}  (atomic: tmp+rename)
         │  then BLOCK polling responses/<id>.json   (until answered)
         ▼
   ┌────────────────────────────┐         ┌──────────────────────────────────────────┐
@@ -46,8 +46,9 @@ just a new request `type` and the human-in-the-loop reply path.
   │  (§9 dispatch)              │         │   sees it via inbox / `flotilla questions`  │
   │  • inbox `question` event   │────────▶│   runs `flotilla answer <agent> "Yes, …"`   │
   │  • mark agent blocked       │         └───────────────────┬────────────────────────┘
-  │  • DOES NOT respond (waits) │                             │ write responses/<id>.json
-  └────────────┬───────────────┘                             │  {"answer":"Yes, …"}  (atomic)
+  │  • returns "deferred"       │                             │ write responses/<id>.json
+  │    (loop writes no response)│                             │  {"status":"ok",            (atomic)
+  └────────────┬───────────────┘                             │   "data":{"answer":"Yes, …"}}
                │ observes responses/<id>.json appears        │
                │  • inbox `question_answered`                ▼
                │  • clear blocked              ┌──────────────────────────────┐
@@ -63,18 +64,37 @@ answer it — they just don't get the proactive inbox notification.
 
 ## 4. The `question` request
 
-Shim writes `/flotilla/session/requests/<id>.json` (atomic tmp+rename, per the §9 envelope):
+Shim writes `/flotilla/session/requests/<id>.json` (atomic tmp+rename, matching the built
+`daemon.Request{ID, Type, Data}` envelope — the question text rides under `data`):
 
 ```json
-{ "type": "question", "id": "<id>", "text": "Should I drop the legacy `users_old` table?", "ts": "2026-06-23T14:02:11Z" }
+{ "type": "question", "id": "<id>", "data": { "text": "Should I drop the legacy `users_old` table?" } }
 ```
 
-The daemon's `question` handler, on dispatch:
+The daemon's `question` `Handler`, on dispatch:
 
-1. Appends an inbox `question` event (daemon-spec §7) carrying `agent`, `id`, and `text`.
+1. Appends an inbox `question` event (daemon-spec §7) carrying `agent`, `id`, and `data.text`.
 2. Marks the agent **blocked** in the state mirror (`~/.flotilla/daemon/agents/<name>.json`, daemon-spec §8).
-3. **Returns without writing a response** — the seam allows a handler to defer (decision #2). The
-   request file stays in `requests/` as the pending marker until answered.
+3. **Returns the deferred sentinel `daemon.Response{Status: "deferred"}`** — it does *not* produce an
+   answer (that comes out-of-band from `flotilla answer`). The request file stays in `requests/` as the
+   pending marker until answered.
+
+### 4.1 Seam change required (the built dispatch loop always writes a response)
+
+The shipped `dispatchRequests` (`internal/daemon/requests.go`) writes `responses/<id>.json` from **every**
+handler's return value, and re-scans `requests/` each tick for any request lacking a response. A
+`question` handler that returned a normal `Response` would therefore (a) unblock the agent immediately
+with a bogus answer, and (b) be re-dispatched — re-notifying — on every tick. So this slice makes two
+small, backward-compatible changes to the seam:
+
+- **Honour a `deferred` status.** When a handler returns `Response{Status: "deferred"}`, the loop writes
+  **no** response file. (`fetch` and any other terminal handler are unaffected — they return
+  `ok`/`error` as before.)
+- **Don't re-dispatch a deferred request.** The supervisor keeps an in-memory set of `(agent, id)` pairs
+  it has already dispatched-and-deferred, so a pending question is handled (notified) **once**, not every
+  tick, until a real `responses/<id>.json` appears (the terminal state, written by `flotilla answer`).
+  The set is process-lifetime only; on a daemon restart a still-pending question is re-notified once,
+  which is acceptable (and the inbox dedups visually by `id`).
 
 ## 5. The answer path — `flotilla answer`
 
@@ -85,8 +105,10 @@ flotilla answer <agent> [--id <id>] "text"
 - Resolves the agent (existing `resolve`), finds its session dir via the `flotilla.logdir` label
   (logs spec §2.1), and locates the pending question: the lone unanswered `requests/*.json` of
   `type:"question"`, or the one named by `--id` when several are pending.
-- Writes `/flotilla/session/responses/<id>.json` atomically:
-  `{ "answer": "text", "ts": "…" }`. That's the exact file the shim is blocking on.
+- Writes `/flotilla/session/responses/<id>.json` atomically, in the **same `daemon.Response` envelope**
+  the seam uses for every other type, with the answer under `data`:
+  `{ "status": "ok", "data": { "answer": "text" } }`. That's the exact file the shim is blocking on, so
+  it terminates the deferred request the same way a normal handler response would.
 - **Daemon-independent** — it's just a scoped file write, so it works whether or not the daemon runs
   (mirrors `flotilla fetch`'s host path). The daemon, when up, *observes* the new response file and
   emits a `question_answered` inbox event + clears the blocked flag; when down, the agent unblocks
@@ -124,7 +146,7 @@ sess=/flotilla/session
 id="$(date +%s%N)-$$"
 mkdir -p "$sess/requests" "$sess/responses"
 # atomic write of the question
-printf '{"type":"question","id":"%s","text":%s}' "$id" "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/^/"/; s/$/"/')" \
+printf '{"type":"question","id":"%s","data":{"text":%s}}' "$id" "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/^/"/; s/$/"/')" \
   > "$sess/requests/.$id.tmp"
 mv "$sess/requests/.$id.tmp" "$sess/requests/$id.json"
 # block until the operator answers — indefinitely, on purpose: the agent must
@@ -182,8 +204,12 @@ file (and `flotilla questions --json`) to render a prompt-the-operator UI.
 Docker-free where possible (temp session dirs + fake daemon/backend), plus the self-skipping Docker path.
 
 - **`question` handler** (temp session dir + fake inbox): a `requests/<id>.json` of `type:"question"`
-  produces an inbox `question` event and a blocked mark, and **no** response file (non-terminal); a later
-  `responses/<id>.json` produces `question_answered` and clears blocked.
+  produces an inbox `question` event and a blocked mark, and **no** response file (the handler returns
+  `deferred`); a later `responses/<id>.json` produces `question_answered` and clears blocked.
+- **Seam: deferred is non-terminal and dispatched once** — `dispatchRequests` writes no file for a
+  `deferred` return, and re-scanning the same still-pending request does **not** re-invoke the handler
+  (one inbox event, not one per tick); a terminal (`ok`/`error`) return still writes a response as before
+  (no regression for `fetch`).
 - **`flotilla answer`** — writes the correctly-named response with the answer text; picks the lone
   pending question without `--id`; errors on none / requires `--id` on several; is daemon-independent
   (works with no daemon process).
