@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -65,4 +66,31 @@ func TestDockerCopyToIntegration(t *testing.T) {
 
 func osWriteFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o600)
+}
+
+func TestUpArgsRendersBindMount(t *testing.T) {
+	args, err := upArgs(UpOpts{
+		WorkspaceFolder: "/work",
+		Mounts:          []Mount{{Source: "/host/sess", Target: "/flotilla/session"}},
+	})
+	if err != nil {
+		t.Fatalf("upArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "up --workspace-folder /work") {
+		t.Errorf("missing up/workspace in %q", joined)
+	}
+	if !strings.Contains(joined, "--mount type=bind,source=/host/sess,target=/flotilla/session") {
+		t.Errorf("missing --mount in %q", joined)
+	}
+}
+
+func TestRemoteUserFromMergedConfig(t *testing.T) {
+	out := "build log line\n{\"mergedConfiguration\":{\"remoteUser\":\"ubuntu\"}}\n"
+	if got := remoteUserFromConfig(out); got != "ubuntu" {
+		t.Errorf("remoteUserFromConfig = %q, want ubuntu", got)
+	}
+	if got := remoteUserFromConfig("no json here"); got != "" {
+		t.Errorf("remoteUserFromConfig(no json) = %q, want empty", got)
+	}
 }

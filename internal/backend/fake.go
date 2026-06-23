@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -24,8 +25,11 @@ type Fake struct {
 	UpCalls               []UpOpts
 	DetachedCalls         [][]string
 	CopyCalls             []CopyCall
-	RemoteUser            string // returned by Up (default "" → caller treats as root)
-	RemoteWorkspaceFolder string // returned by Up
+	RemoteUser            string     // returned by Up (default "" → caller treats as root)
+	RemoteWorkspaceFolder string     // returned by Up
+	ReadConfigResult      ConfigInfo // returned by ReadConfig (zero → empty RemoteUser → fallback)
+	ReadConfigErr         error      // optional error from ReadConfig
+	CopyFromCalls         []CopyCall // records CopyFrom invocations
 	NetworkCreates        []string
 	NetworkRemoves        []string
 	nets                  map[string][]string // id -> attached network names
@@ -140,6 +144,23 @@ func (f *Fake) ExecDetached(_ context.Context, id string, cmd []string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.DetachedCalls = append(f.DetachedCalls, append([]string{id}, cmd...))
+	return nil
+}
+
+func (f *Fake) ReadConfig(_ context.Context, _ string) (ConfigInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ReadConfigResult, f.ReadConfigErr
+}
+
+func (f *Fake) CopyFrom(_ context.Context, id, srcPath, hostPath string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.CopyFromCalls = append(f.CopyFromCalls, CopyCall{ID: id, HostPath: hostPath, DestPath: srcPath})
+	// Simulate the copy landing on the host so callers' empty-dir idempotency
+	// guards flip on a second call.
+	_ = os.MkdirAll(hostPath, 0o777)
+	_ = os.WriteFile(filepath.Join(hostPath, "session.jsonl"), []byte("{}"), 0o644)
 	return nil
 }
 
