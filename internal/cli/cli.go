@@ -140,7 +140,12 @@ func submitCmd(f *fleet.Fleet) *cobra.Command {
 			out := cmd.OutOrStdout()
 			switch {
 			case sub.PushOnly:
-				if _, err := fmt.Fprintf(out, "Pushed %s → open a PR: %s\n", sub.Branch, sub.PRURL); err != nil {
+				// A non-GitHub remote yields no compare URL; don't print a dangling "→ open a PR: ".
+				line := fmt.Sprintf("Pushed %s → open a PR: %s\n", sub.Branch, sub.PRURL)
+				if sub.PRURL == "" {
+					line = fmt.Sprintf("Pushed %s — open a pull request on your host to merge it\n", sub.Branch)
+				}
+				if _, err := fmt.Fprint(out, line); err != nil {
 					return err
 				}
 				if sub.Note != "" {

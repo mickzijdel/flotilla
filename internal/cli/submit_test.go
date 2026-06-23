@@ -120,10 +120,19 @@ func TestSubmitCmdHumanOutput(t *testing.T) {
 			wantOut: []string{"open a PR: https://h/compare/x"},
 		},
 		{
-			name:    "push-only with note (gh create failed)",
-			agent:   "epsilon",
-			fk:      &forge.Fake{AvailableFlag: true, Err: errors.New("gh pr create: boom")},
-			wantOut: []string{"open a PR:", "(note:", "boom"},
+			name:  "push-only with note (gh create failed)",
+			agent: "epsilon",
+			fk:    &forge.Fake{AvailableFlag: true, Err: errors.New("gh pr create: boom")},
+			// The test seed uses a local remote, so the degrade path's compare URL is
+			// empty; the note line carrying the gh failure is the point of this case.
+			wantOut: []string{"open a pull request on your host", "(note:", "boom"},
+		},
+		{
+			name:      "push-only, no compare URL (non-GitHub remote)",
+			agent:     "zeta",
+			fk:        &forge.Fake{AvailableFlag: false, Result: forge.PRResult{URL: "", PushOnly: true}},
+			wantOut:   []string{"open a pull request on your host"},
+			wantNoOut: []string{"open a PR:"},
 		},
 	}
 
