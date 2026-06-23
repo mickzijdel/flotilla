@@ -25,6 +25,7 @@ type Agent struct {
 	Status  string    `json:"status"`
 	Created time.Time `json:"created"`
 	ID      string    `json:"id"`
+	LogDir  string    `json:"logDir,omitempty"`
 }
 
 // Fleet orchestrates agents over a Backend.
@@ -210,7 +211,7 @@ func (f *Fleet) List(ctx context.Context) ([]Agent, error) {
 		if c.Labels[backend.LabelProxy] != "" {
 			continue // egress proxy sidecar, not an agent
 		}
-		out = append(out, Agent{Name: c.Name, Repo: c.Repo, Status: c.Status, Created: c.Created, ID: c.ID})
+		out = append(out, Agent{Name: c.Name, Repo: c.Repo, Status: c.Status, Created: c.Created, ID: c.ID, LogDir: c.Labels[backend.LabelLogDir]})
 	}
 	return out, nil
 }

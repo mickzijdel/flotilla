@@ -1,9 +1,14 @@
 package fleet
 
 import (
+	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/mickzijdel/flotilla/internal/backend"
 )
 
 // containerSessionDir is the fixed, user-agnostic mount point for an agent's
@@ -82,4 +87,50 @@ func transcriptTarget(transcriptPath, home string) string {
 	default:
 		return p
 	}
+}
+
+// LogInfo locates an agent's persisted logs.
+type LogInfo struct {
+	Agent          string `json:"agent"`
+	LogDir         string `json:"logDir"`
+	Status         string `json:"status"`         // "running" | "done" | "" (unknown)
+	TranscriptPath string `json:"transcriptPath"` // host transcript dir
+}
+
+// Logs resolves an agent's log dir from its container label, reads the persisted
+// status, and (when the agent has exited and its transcript was copy-fallback)
+// lazily copies the in-container transcript to the host. Idempotent.
+func (f *Fleet) Logs(ctx context.Context, name string) (LogInfo, error) {
+	c, err := f.resolve(ctx, name)
+	if err != nil {
+		return LogInfo{}, err
+	}
+	dir := c.Labels[backend.LabelLogDir]
+	if dir == "" {
+		return LogInfo{}, fmt.Errorf("no logs recorded for agent %q", name)
+	}
+	info := LogInfo{Agent: name, LogDir: dir, TranscriptPath: filepath.Join(dir, "transcript")}
+	if b, err := os.ReadFile(filepath.Join(dir, "status")); err == nil {
+		info.Status = strings.TrimSpace(string(b))
+	}
+	f.maybeCopyTranscript(ctx, c, dir)
+	return info, nil
+}
+
+// maybeCopyTranscript performs the copy-out fallback: if the session is flagged
+// copy-fallback, the container has exited, and the host transcript dir is still
+// empty, docker cp it out of the container. Best-effort + idempotent.
+func (f *Fleet) maybeCopyTranscript(ctx context.Context, c backend.Container, dir string) {
+	src, err := os.ReadFile(filepath.Join(dir, ".copy-fallback"))
+	if err != nil {
+		return // live-mounted (or no transcript) — nothing to copy
+	}
+	if c.Status != "exited" {
+		return // still running; the transcript is being written in-container
+	}
+	host := filepath.Join(dir, "transcript")
+	if entries, _ := os.ReadDir(host); len(entries) > 0 {
+		return // already copied
+	}
+	_ = f.Backend.CopyFrom(ctx, c.ID, strings.TrimSpace(string(src))+"/.", host)
 }
