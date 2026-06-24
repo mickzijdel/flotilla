@@ -58,7 +58,12 @@ Roughly in dependency order:
   [spec](specs/2026-06-23-flotilla-agent-question-channel-design.md) and
   [plan](plans/2026-06-24-flotilla-agent-question-channel.md).
 1. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
-   CLI is the primary control surface; the skill sits on top).
+   CLI is the primary control surface; the skill sits on top). **Spec drafted** — scoped to the
+   **host operator** (`flotilla-operator`); see
+   [spec](specs/2026-06-24-flotilla-operator-skill-design.md). The in-container agent skill
+   (`flotilla-agent`, the `flotilla-ask`/`flotilla-fetch` shims) is split out and **deferred** — the
+   engine already auto-injects ask/fetch awareness preambles, so it's only worth building if
+   nested/recursive flotilla becomes real (spec §7). Independent of the remote backend.
 2. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
 3. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
    is already in place. Docker Sandboxes / `sbx` could be added as an additional backend once it
