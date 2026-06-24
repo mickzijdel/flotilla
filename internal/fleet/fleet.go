@@ -184,9 +184,10 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	}
 	// Prompt: written out-of-band (file via docker cp, never argv) and loaded
 	// into $FLOTILLA_PROMPT by the launch wrapper, so metacharacters are inert.
-	// The fetch hint is always appended so the agent knows it can ask the engine
-	// to refresh origin (the flotilla-fetch shim) despite having no credentials.
-	fullPrompt := agent.PromptWithFetchHint(agent.PromptWithWrapUp(prompt, prof.WrapUpText()))
+	// The fetch + ask hints are always appended so the agent knows it can ask the
+	// engine to refresh origin (flotilla-fetch) and ask its operator a blocking
+	// question (flotilla-ask), despite having no network or credentials.
+	fullPrompt := agent.PromptWithAskHint(agent.PromptWithFetchHint(agent.PromptWithWrapUp(prompt, prof.WrapUpText())))
 	if err := inj.WriteFile(ctx, []byte(fullPrompt), agentPromptFile(home)); err != nil {
 		return fail(fmt.Errorf("inject prompt: %w", err))
 	}
@@ -205,6 +206,11 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	// request channel. Independent of the agent profile.
 	if err := installFetchShim(ctx, f.Backend, id); err != nil {
 		return fail(fmt.Errorf("install fetch shim: %w", err))
+	}
+	// 3.2) Install the flotilla-ask shim (root step, on PATH): lets the agent ask
+	// its operator a blocking question via the daemon's request channel.
+	if err := installAskShim(ctx, f.Backend, id); err != nil {
+		return fail(fmt.Errorf("install ask shim: %w", err))
 	}
 	// 3.5) Egress firewall: confine the agent to the allowlist (fail-closed).
 	if f.EgressFirewall {

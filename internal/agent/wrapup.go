@@ -44,3 +44,16 @@ const FetchHint = "You have no git credentials inside this container. To pull in
 func PromptWithFetchHint(prompt string) string {
 	return prompt + "\n\n---\n[Flotilla on-demand fetch]\n" + FetchHint + "\n"
 }
+
+// AskHint tells the agent it can ask its operator a question and block for the
+// answer when it hits a decision only the operator can make. Constant preamble.
+const AskHint = "If you're blocked on a decision only the operator can make — an " +
+	"ambiguous requirement or a risky, irreversible action — run " +
+	"`flotilla-ask \"your question\"` and wait for the answer rather than guessing. " +
+	"It blocks until the operator replies."
+
+// PromptWithAskHint appends the ask-the-operator awareness note to the prompt as
+// a clearly delimited block, mirroring PromptWithWrapUp's format.
+func PromptWithAskHint(prompt string) string {
+	return prompt + "\n\n---\n[Flotilla ask-the-operator]\n" + AskHint + "\n"
+}

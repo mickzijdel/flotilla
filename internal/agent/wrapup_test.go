@@ -39,6 +39,19 @@ func TestPromptWithWrapUpAppendsDelimitedBlock(t *testing.T) {
 	}
 }
 
+func TestPromptWithAskHintAppendsBlock(t *testing.T) {
+	got := PromptWithAskHint("do the task")
+	if !strings.HasPrefix(got, "do the task") {
+		t.Errorf("user prompt must come first: %q", got)
+	}
+	if !strings.Contains(got, "flotilla-ask") {
+		t.Errorf("ask hint missing the command name: %q", got)
+	}
+	if !strings.Contains(got, "[Flotilla ask-the-operator]") {
+		t.Errorf("ask hint block marker missing: %q", got)
+	}
+}
+
 func TestPromptWithFetchHintAppendsBlock(t *testing.T) {
 	got := PromptWithFetchHint("do the task")
 	if !strings.HasPrefix(got, "do the task") {
