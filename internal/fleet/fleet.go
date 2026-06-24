@@ -184,9 +184,10 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	}
 	// Prompt: written out-of-band (file via docker cp, never argv) and loaded
 	// into $FLOTILLA_PROMPT by the launch wrapper, so metacharacters are inert.
-	// The fetch hint is always appended so the agent knows it can ask the engine
-	// to refresh origin (the flotilla-fetch shim) despite having no credentials.
-	fullPrompt := agent.PromptWithFetchHint(agent.PromptWithWrapUp(prompt, prof.WrapUpText()))
+	// The fetch + ask hints are always appended so the agent knows it can ask the
+	// engine to refresh origin (flotilla-fetch) and ask its operator a blocking
+	// question (flotilla-ask), despite having no network or credentials.
+	fullPrompt := agent.PromptWithAskHint(agent.PromptWithFetchHint(agent.PromptWithWrapUp(prompt, prof.WrapUpText())))
 	if err := inj.WriteFile(ctx, []byte(fullPrompt), agentPromptFile(home)); err != nil {
 		return fail(fmt.Errorf("inject prompt: %w", err))
 	}
@@ -205,6 +206,11 @@ func (f *Fleet) Spawn(ctx context.Context, repoURL string, prof agent.Profile, p
 	// request channel. Independent of the agent profile.
 	if err := installFetchShim(ctx, f.Backend, id); err != nil {
 		return fail(fmt.Errorf("install fetch shim: %w", err))
+	}
+	// 3.2) Install the flotilla-ask shim (root step, on PATH): lets the agent ask
+	// its operator a blocking question via the daemon's request channel.
+	if err := installAskShim(ctx, f.Backend, id); err != nil {
+		return fail(fmt.Errorf("install ask shim: %w", err))
 	}
 	// 3.5) Egress firewall: confine the agent to the allowlist (fail-closed).
 	if f.EgressFirewall {
@@ -232,7 +238,16 @@ func (f *Fleet) List(ctx context.Context) ([]Agent, error) {
 		if c.Labels[backend.LabelProxy] != "" {
 			continue // egress proxy sidecar, not an agent
 		}
-		out = append(out, Agent{Name: c.Name, Repo: c.Repo, Status: c.Status, Created: c.Created, ID: c.ID, LogDir: c.Labels[backend.LabelLogDir]})
+		logDir := c.Labels[backend.LabelLogDir]
+		status := c.Status
+		// Overlay a derived "blocked" state on a running agent waiting on an
+		// operator question — computed purely from the filesystem, so it needs no
+		// daemon. The launch-wrapper status file (which the daemon reads for
+		// done-detection) is untouched; this overlay is only on the listed Status.
+		if status == "running" && hasPendingQuestion(logDir) {
+			status = "blocked"
+		}
+		out = append(out, Agent{Name: c.Name, Repo: c.Repo, Status: status, Created: c.Created, ID: c.ID, LogDir: logDir})
 	}
 	return out, nil
 }

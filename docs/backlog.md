@@ -48,15 +48,19 @@ Roughly in dependency order:
   injected on `PATH` at spawn; a constant fetch-awareness preamble is appended to every agent prompt.
   See [spec](specs/2026-06-23-flotilla-on-demand-fetch-design.md) and
   [plan](plans/2026-06-24-flotilla-on-demand-fetch.md).
-1. **Agent question/answer channel** — a running agent asks its operator a question
-   (`flotilla-ask "…"`) and blocks for the reply; the operator answers with `flotilla answer <agent>
-   "…"`. Rides the daemon's request-handler seam (notify via inbox + `flotilla questions`), realises
-   the deferred **`blocked`** status, and the answer path is daemon-independent. Spec drafted:
-   [agent question channel](specs/2026-06-23-flotilla-agent-question-channel-design.md).
-2. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
+- ~~**Agent question/answer channel** — a running agent asks its operator a question
+  (`flotilla-ask "…"`) and blocks for the reply; the operator answers with `flotilla answer <agent>
+  "…"`.~~ **Done** — rides the daemon's request-handler seam via a new non-terminal `deferred` status
+  (the `question` handler notifies + defers; `flotilla answer` writes the response out-of-band).
+  Notify via inbox `question`/`question_answered` events + `flotilla questions` (filesystem-derived,
+  daemon-independent); realises the deferred **`blocked`** status as a `flotilla list` overlay;
+  `flotilla-ask` shim injected on `PATH` at spawn + an ask-awareness prompt preamble. See
+  [spec](specs/2026-06-23-flotilla-agent-question-channel-design.md) and
+  [plan](plans/2026-06-24-flotilla-agent-question-channel.md).
+1. **CLI-driver skill** — a skill modelled on playwright-cli so agents can drive `flotilla` (the
    CLI is the primary control surface; the skill sits on top).
-3. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
-4. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
+2. **VS Code extension** — UI over the CLI for managing multiple agents across repos at once.
+3. **Remote backend** — `DOCKER_HOST` over TLS/SSH for multi-machine; the `Backend` interface seam
    is already in place. Docker Sandboxes / `sbx` could be added as an additional backend once it
    lands on Linux (see spec §7).
 

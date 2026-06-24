@@ -6,19 +6,36 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
-func TestDispatchRequestsWritesResponse(t *testing.T) {
-	sess := t.TempDir()
+// dispSup builds a Supervisor wired to reg with a real (temp) Paths root, for
+// exercising the dispatch seam directly.
+func dispSup(t *testing.T, reg *Registry) *Supervisor {
+	t.Helper()
+	return &Supervisor{
+		Fleet:    &fakeFleet{fakeSubmitter: &fakeSubmitter{}},
+		Paths:    Paths{Root: t.TempDir()},
+		Registry: reg,
+		Now:      func() time.Time { return time.Unix(1000, 0).UTC() },
+	}
+}
+
+func writeReq(t *testing.T, sess, id string, req Request) {
+	t.Helper()
 	reqDir := filepath.Join(sess, "requests")
 	if err := os.MkdirAll(reqDir, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	req := Request{ID: "abc", Type: "ping", Data: map[string]any{"x": "y"}}
 	b, _ := json.Marshal(req)
-	if err := os.WriteFile(filepath.Join(reqDir, "abc.json"), b, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(reqDir, id+".json"), b, 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestDispatchRequestsWritesResponse(t *testing.T) {
+	sess := t.TempDir()
+	writeReq(t, sess, "abc", Request{ID: "abc", Type: "ping", Data: map[string]any{"x": "y"}})
 
 	reg := NewRegistry()
 	var gotAgent string
@@ -27,7 +44,7 @@ func TestDispatchRequestsWritesResponse(t *testing.T) {
 		return Response{Status: "ok", Message: "pong", Data: map[string]any{"echo": r.Data["x"]}}
 	})
 
-	dispatchRequests(context.Background(), reg, "otter", sess)
+	dispSup(t, reg).dispatchRequests(context.Background(), "otter", sess)
 
 	if gotAgent != "otter" {
 		t.Fatalf("handler got agent %q", gotAgent)
@@ -50,7 +67,7 @@ func TestDispatchRequestsWritesResponse(t *testing.T) {
 		called = true
 		return Response{Status: "ok"}
 	})
-	dispatchRequests(context.Background(), reg2, "otter", sess)
+	dispSup(t, reg2).dispatchRequests(context.Background(), "otter", sess)
 	if called {
 		t.Fatal("already-answered request must not be re-dispatched")
 	}
@@ -58,12 +75,9 @@ func TestDispatchRequestsWritesResponse(t *testing.T) {
 
 func TestDispatchUnknownType(t *testing.T) {
 	sess := t.TempDir()
-	reqDir := filepath.Join(sess, "requests")
-	_ = os.MkdirAll(reqDir, 0o777)
-	b, _ := json.Marshal(Request{ID: "z", Type: "nope"})
-	_ = os.WriteFile(filepath.Join(reqDir, "z.json"), b, 0o644)
+	writeReq(t, sess, "z", Request{ID: "z", Type: "nope"})
 
-	dispatchRequests(context.Background(), NewRegistry(), "otter", sess)
+	dispSup(t, NewRegistry()).dispatchRequests(context.Background(), "otter", sess)
 
 	rb, err := os.ReadFile(filepath.Join(sess, "responses", "z.json"))
 	if err != nil {
@@ -73,5 +87,67 @@ func TestDispatchUnknownType(t *testing.T) {
 	_ = json.Unmarshal(rb, &resp)
 	if resp.Status != "error" {
 		t.Fatalf("want error status, got %+v", resp)
+	}
+}
+
+// TestDispatchDeferredWritesNoResponseAndDispatchesOnce proves the §4.1 seam
+// change: a handler returning the deferred sentinel writes NO response file and
+// is invoked exactly once even across repeated scans (notified once, not per
+// tick) — until a real response appears out-of-band.
+func TestDispatchDeferredWritesNoResponseAndDispatchesOnce(t *testing.T) {
+	sess := t.TempDir()
+	writeReq(t, sess, "q1", Request{ID: "q1", Type: "defer"})
+
+	reg := NewRegistry()
+	calls := 0
+	reg.Register("defer", func(_ context.Context, _ string, _ Request) Response {
+		calls++
+		return Response{Status: StatusDeferred}
+	})
+	s := dispSup(t, reg)
+
+	s.dispatchRequests(context.Background(), "otter", sess)
+	s.dispatchRequests(context.Background(), "otter", sess) // re-scan: must not re-dispatch
+
+	if calls != 1 {
+		t.Fatalf("deferred handler dispatched %d times, want exactly 1", calls)
+	}
+	if _, err := os.Stat(filepath.Join(sess, "responses", "q1.json")); !os.IsNotExist(err) {
+		t.Fatalf("deferred return must not write a response file (err=%v)", err)
+	}
+}
+
+// TestDispatchDeferredAnsweredOutOfBand proves that once a response file appears
+// for a deferred request (as flotilla answer writes it), the next scan observes
+// the transition via onAnswered exactly once.
+func TestDispatchDeferredAnsweredOutOfBand(t *testing.T) {
+	sess := t.TempDir()
+	writeReq(t, sess, "q1", Request{ID: "q1", Type: "defer"})
+
+	reg := NewRegistry()
+	reg.Register("defer", func(_ context.Context, _ string, _ Request) Response {
+		return Response{Status: StatusDeferred}
+	})
+	s := dispSup(t, reg)
+
+	var answered []string
+	s.onAnsweredHook = func(agent, id, typ, _ string) {
+		answered = append(answered, agent+"/"+id+"/"+typ)
+	}
+
+	s.dispatchRequests(context.Background(), "otter", sess) // defers
+	// Operator answers out-of-band.
+	respDir := filepath.Join(sess, "responses")
+	if err := os.MkdirAll(respDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(respDir, "q1.json"), []byte(`{"status":"ok","data":{"answer":"yes"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.dispatchRequests(context.Background(), "otter", sess) // observes the answer
+	s.dispatchRequests(context.Background(), "otter", sess) // and only once
+
+	if len(answered) != 1 || answered[0] != "otter/q1/defer" {
+		t.Fatalf("onAnswered fired %v, want exactly [otter/q1/defer]", answered)
 	}
 }

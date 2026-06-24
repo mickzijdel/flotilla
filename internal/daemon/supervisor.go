@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,9 +28,29 @@ type Supervisor struct {
 	Registry *Registry        // request-handler seam (may be nil)
 	Now      func() time.Time // injectable clock (tests); nil ⇒ time.Now
 
+	// deferred tracks (agent,id)→type for non-terminal (StatusDeferred) requests
+	// so each is dispatched (notified) once, not per tick, until answered out of
+	// band. Process-lifetime only; a restart re-notifies a still-pending request
+	// once (acceptable — the inbox dedups visually by id).
+	deferred map[string]string
+	// onAnsweredHook overrides onAnswered's real work in tests.
+	onAnsweredHook func(agent, id, typ, respPath string)
+
 	// Set by RunForeground to drive the re-exec self-check; empty ⇒ no check.
 	ExePath  string
 	LockFile *os.File
+}
+
+// onAnswered observes a deferred request transitioning to answered (its response
+// file appeared out-of-band). Fired exactly once per request.
+func (s *Supervisor) onAnswered(agent, id, typ, respPath string) {
+	if s.onAnsweredHook != nil {
+		s.onAnsweredHook(agent, id, typ, respPath)
+		return
+	}
+	if typ == "question" {
+		s.onQuestionAnswered(agent, id, respPath)
+	}
 }
 
 func (s *Supervisor) now() time.Time {
@@ -110,7 +131,7 @@ func (s *Supervisor) scanOnce(ctx context.Context) {
 			s.handle(ctx, a.Name)
 		}
 		if s.Registry != nil && a.LogDir != "" {
-			dispatchRequests(ctx, s.Registry, a.Name, a.LogDir)
+			s.dispatchRequests(ctx, a.Name, a.LogDir)
 		}
 	}
 }
@@ -145,6 +166,52 @@ func (s *Supervisor) registerHandlers() {
 		return
 	}
 	s.Registry.Register("fetch", s.fetchHandler)
+	s.Registry.Register("question", s.questionHandler)
+}
+
+// markBlocked sets/clears the blocked flag in an agent's state-mirror record.
+// Best-effort: a write failure is non-fatal (the filesystem-derived blocked
+// overlay in `flotilla list` is the source of truth operators see).
+func (s *Supervisor) markBlocked(name string, blocked bool) {
+	rec, _ := s.Paths.LoadAgent(name)
+	rec.Name = name
+	rec.Blocked = blocked
+	rec.LastEventTS = s.now()
+	_ = s.Paths.SaveAgent(rec)
+}
+
+// questionHandler services an agent-initiated question: it notifies the operator
+// (inbox question event) and marks the agent blocked, then returns the deferred
+// sentinel so the dispatch loop writes no response — the answer is produced
+// out-of-band by `flotilla answer`. The action is fixed (notify + wait); the
+// question text is opaque and never executed (trust boundary, spec §9).
+func (s *Supervisor) questionHandler(_ context.Context, agent string, req Request) Response {
+	text := ""
+	if req.Data != nil {
+		if t, ok := req.Data["text"].(string); ok {
+			text = t
+		}
+	}
+	s.emit(agent, EventQuestion, "agent asked a question", map[string]any{"id": req.ID, "text": text})
+	s.markBlocked(agent, true)
+	return Response{Status: StatusDeferred}
+}
+
+// onQuestionAnswered fires once when a deferred question's response appears
+// out-of-band (written by `flotilla answer`): it records the answer in the inbox
+// and clears the agent's blocked mark.
+func (s *Supervisor) onQuestionAnswered(agent, id, respPath string) {
+	answer := ""
+	if b, err := os.ReadFile(respPath); err == nil {
+		var resp Response
+		if json.Unmarshal(b, &resp) == nil && resp.Data != nil {
+			if a, ok := resp.Data["answer"].(string); ok {
+				answer = a
+			}
+		}
+	}
+	s.emit(agent, EventQuestionAnswered, "operator answered", map[string]any{"id": id, "answer": answer})
+	s.markBlocked(agent, false)
 }
 
 // fetchHandler services an agent-initiated fetch request: it re-fetches origin
