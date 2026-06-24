@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Flotilla — Dashboard mockup</title>
+<style>
+  :root{
+    --bg:#1e1e1e; --bg2:#252526; --bg3:#2d2d30; --panel:#1e1e1e;
+    --border:#333; --border2:#2b2b2b;
+    --fg:#cccccc; --fg-dim:#8a8a8a; --fg-faint:#6a6a6a;
+    --blue:#0e639c; --blue-hover:#1177bb;
+    --green:#4ec9b0; --green2:#89d185; --yellow:#cca700; --red:#f14c4c;
+    --chip-run:#264f3a; --chip-run-fg:#89d185;
+    --chip-block:#4d3f0a; --chip-block-fg:#f0c674;
+    --chip-done:#2b3a4d; --chip-done-fg:#75beff;
+    --chip-exit:#3a2a2a; --chip-exit-fg:#f48771;
+    --font:'Segoe WPC','Segoe UI',system-ui,sans-serif;
+    --mono:'SF Mono',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:13px;}
+
+  /* fake VS Code tab strip */
+  .tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);height:35px;align-items:flex-end;}
+  .tab{padding:8px 14px;background:var(--bg2);color:var(--fg-dim);border-right:1px solid var(--border);font-size:13px;}
+  .tab.active{background:var(--bg);color:var(--fg);border-top:1px solid var(--blue);}
+  .tab .ship{margin-right:6px;}
+
+  .wrap{padding:0 0 40px 0;max-width:1100px;}
+
+  /* toolbar */
+  .toolbar{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--border2);}
+  .btn{background:var(--blue);color:#fff;border:none;border-radius:3px;padding:5px 12px;font-size:13px;cursor:pointer;}
+  .btn:hover{background:var(--blue-hover);}
+  .btn.secondary{background:transparent;color:var(--fg);border:1px solid var(--border);}
+  .btn.secondary:hover{background:var(--bg3);}
+  .btn.ghost{background:transparent;color:var(--fg-dim);border:none;padding:4px 8px;}
+  .btn.ghost:hover{color:var(--fg);background:var(--bg3);border-radius:3px;}
+  .btn.danger:hover{color:var(--red);}
+  .spacer{flex:1;}
+  .updated{color:var(--fg-faint);font-size:12px;}
+
+  /* questions section */
+  .questions{margin:14px 18px;border:1px solid var(--yellow);border-radius:5px;background:#2a2410;}
+  .questions h2{margin:0;padding:9px 14px;font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
+    color:var(--yellow);border-bottom:1px solid #4d3f0a;display:flex;align-items:center;gap:8px;}
+  .q{padding:12px 14px;border-bottom:1px solid #3a3110;}
+  .q:last-child{border-bottom:none;}
+  .q-head{display:flex;align-items:center;gap:10px;margin-bottom:7px;}
+  .q-agent{font-weight:600;color:var(--fg);}
+  .q-repo{color:var(--fg-faint);font-size:12px;}
+  .q-age{color:var(--fg-faint);font-size:12px;margin-left:auto;}
+  .q-text{margin:4px 0 10px;color:#e8e0c8;}
+  .q-row{display:flex;gap:8px;}
+  .q-input{flex:1;background:#1c1a10;border:1px solid #5a4d18;color:var(--fg);border-radius:3px;padding:6px 9px;font-size:13px;}
+  .q-input::placeholder{color:#8a7d4a;}
+
+  /* repo groups + fleet table */
+  .group{margin:16px 18px 0;}
+  .group-head{display:flex;align-items:center;gap:8px;color:var(--fg-dim);font-size:12px;
+    padding:5px 2px;border-bottom:1px solid var(--border2);text-transform:uppercase;letter-spacing:.4px;}
+  .group-head .repo{color:var(--fg);text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;}
+  .group-head .count{color:var(--fg-faint);}
+  table{width:100%;border-collapse:collapse;}
+  td,th{text-align:left;padding:9px 8px;font-size:13px;}
+  th{color:var(--fg-faint);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.4px;}
+  tr.agent{border-bottom:1px solid var(--border2);}
+  tr.agent:hover{background:var(--bg2);}
+  .name{font-weight:600;}
+  .name .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:8px;vertical-align:middle;}
+  .dot.run{background:var(--green2);box-shadow:0 0 5px var(--green2);}
+  .dot.block{background:var(--yellow);}
+  .dot.done{background:#75beff;}
+  .dot.exit{background:var(--red);}
+  .chip{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;}
+  .chip.run{background:var(--chip-run);color:var(--chip-run-fg);}
+  .chip.block{background:var(--chip-block);color:var(--chip-block-fg);}
+  .chip.done{background:var(--chip-done);color:var(--chip-done-fg);}
+  .chip.exit{background:var(--chip-exit);color:var(--chip-exit-fg);}
+  .age{color:var(--fg-dim);font-variant-numeric:tabular-nums;}
+  .actions{text-align:right;white-space:nowrap;}
+  .col-actions{width:330px;}
+
+  /* fake status bar */
+  .statusbar{position:fixed;bottom:0;left:0;right:0;height:24px;background:#007acc;color:#fff;display:flex;
+    align-items:center;font-size:12px;padding:0 12px;gap:16px;}
+  .statusbar.blocked{background:#b58500;}
+  .statusbar .seg{display:flex;align-items:center;gap:5px;}
+  .statusbar .right{margin-left:auto;opacity:.85;}
+  .legend{margin:22px 18px 0;color:var(--fg-faint);font-size:11px;}
+</style>
+</head>
+<body>
+  <div class="tabs">
+    <div class="tab">repo.ts</div>
+    <div class="tab">README.md</div>
+    <div class="tab active"><span class="ship">🚢</span>Flotilla</div>
+  </div>
+
+  <div class="wrap">
+    <!-- toolbar -->
+    <div class="toolbar">
+      <button class="btn">＋ Spawn agent…</button>
+      <button class="btn secondary">⟳ Refresh</button>
+      <span class="spacer"></span>
+      <span class="updated">updated 2s ago · polling every 3s</span>
+    </div>
+
+    <!-- questions (only shown when agents are blocked) -->
+    <div class="questions">
+      <h2>⏸ Waiting on you · 2 questions</h2>
+
+      <div class="q">
+        <div class="q-head">
+          <span class="q-agent">wise-lynx</span>
+          <span class="q-repo">acme/api</span>
+          <span class="q-age">blocked 5m</span>
+        </div>
+        <div class="q-text">Should I drop the legacy <code>users_old</code> table, or keep it and add a migration to backfill instead?</div>
+        <div class="q-row">
+          <input class="q-input" placeholder="Type your answer… (sent via `flotilla answer`)">
+          <button class="btn">Send</button>
+          <button class="btn secondary danger">Stop agent</button>
+        </div>
+      </div>
+
+      <div class="q">
+        <div class="q-head">
+          <span class="q-agent">bold-heron</span>
+          <span class="q-repo">acme/web</span>
+          <span class="q-age">blocked 1m</span>
+        </div>
+        <div class="q-text">The brief says "use the design-system Button" but there are two — <code>ui/Button</code> and <code>legacy/Button</code>. Which one?</div>
+        <div class="q-row">
+          <input class="q-input" placeholder="Type your answer…">
+          <button class="btn">Send</button>
+          <button class="btn secondary danger">Stop agent</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- fleet, grouped by repo -->
+    <div class="group">
+      <div class="group-head"><span class="repo">acme/api</span><span class="count">· 3 agents</span></div>
+      <table>
+        <thead><tr><th>Agent</th><th>Status</th><th>Age</th><th class="col-actions"></th></tr></thead>
+        <tbody>
+          <tr class="agent">
+            <td class="name"><span class="dot run"></span>brave-otter</td>
+            <td><span class="chip run">running</span></td>
+            <td class="age">2h 14m</td>
+            <td class="actions">
+              <button class="btn ghost">Attach</button>
+              <button class="btn ghost">Logs</button>
+              <button class="btn ghost">Submit</button>
+              <button class="btn ghost">Stop</button>
+              <button class="btn ghost danger">Rm</button>
+            </td>
+          </tr>
+          <tr class="agent">
+            <td class="name"><span class="dot block"></span>wise-lynx</td>
+            <td><span class="chip block">blocked</span></td>
+            <td class="age">5m</td>
+            <td class="actions">
+              <button class="btn ghost">Answer ↑</button>
+              <button class="btn ghost">Attach</button>
+              <button class="btn ghost">Logs</button>
+              <button class="btn ghost">Stop</button>
+              <button class="btn ghost danger">Rm</button>
+            </td>
+          </tr>
+          <tr class="agent">
+            <td class="name"><span class="dot done"></span>keen-fox</td>
+            <td><span class="chip done">done</span></td>
+            <td class="age">1h 02m</td>
+            <td class="actions">
+              <button class="btn ghost">Attach</button>
+              <button class="btn ghost">Logs</button>
+              <button class="btn ghost">Submit ▸ PR</button>
+              <button class="btn ghost danger">Rm</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><span class="repo">acme/web</span><span class="count">· 2 agents</span></div>
+      <table>
+        <thead><tr><th>Agent</th><th>Status</th><th>Age</th><th class="col-actions"></th></tr></thead>
+        <tbody>
+          <tr class="agent">
+            <td class="name"><span class="dot block"></span>bold-heron</td>
+            <td><span class="chip block">blocked</span></td>
+            <td class="age">1m</td>
+            <td class="actions">
+              <button class="btn ghost">Answer ↑</button>
+              <button class="btn ghost">Attach</button>
+              <button class="btn ghost">Logs</button>
+              <button class="btn ghost">Stop</button>
+              <button class="btn ghost danger">Rm</button>
+            </td>
+          </tr>
+          <tr class="agent">
+            <td class="name"><span class="dot exit"></span>calm-wren</td>
+            <td><span class="chip exit">exited</span></td>
+            <td class="age">22m</td>
+            <td class="actions">
+              <button class="btn ghost">Attach (restart)</button>
+              <button class="btn ghost">Logs</button>
+              <button class="btn ghost">Submit</button>
+              <button class="btn ghost danger">Rm</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="legend">Status chips theme-tinted via ThemeColor · row hover reveals nothing hidden (actions always visible) · the “Answer ↑” button scrolls to the Questions section.</div>
+  </div>
+
+  <!-- fake status bar: attention-colored because agents are blocked -->
+  <div class="statusbar blocked">
+    <span class="seg">🚢 Flotilla</span>
+    <span class="seg">5 agents</span>
+    <span class="seg">● 2 running</span>
+    <span class="seg">⏸ 2 blocked</span>
+    <span class="seg">✓ 1 done</span>
+    <span class="right">click to open dashboard</span>
+  </div>
+</body>
+</html>
