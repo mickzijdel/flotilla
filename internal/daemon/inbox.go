@@ -12,11 +12,13 @@ import (
 
 // Inbox event types (open set; later handlers add their own).
 const (
-	EventAgentDone     = "agent_done"
-	EventPROpened      = "pr_opened"
-	EventPRUpdated     = "pr_updated"
-	EventSubmitSkipped = "submit_skipped"
-	EventFetchDone     = "fetch_done"
+	EventAgentDone        = "agent_done"
+	EventPROpened         = "pr_opened"
+	EventPRUpdated        = "pr_updated"
+	EventSubmitSkipped    = "submit_skipped"
+	EventFetchDone        = "fetch_done"
+	EventQuestion         = "question"
+	EventQuestionAnswered = "question_answered"
 )
 
 // InboxEvent is one operator-facing notable event.

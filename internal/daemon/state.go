@@ -18,6 +18,7 @@ type AgentRecord struct {
 	LastHandledSHA   string    `json:"lastHandledSHA"`   // HEAD at last done-handling (any outcome)
 	LastSubmittedSHA string    `json:"lastSubmittedSHA"` // HEAD at last successful submit
 	LastEventTS      time.Time `json:"lastEventTS"`
+	Blocked          bool      `json:"blocked,omitempty"` // a pending operator question is waiting
 }
 
 // LoadAgent reads a per-agent record; a missing file yields a zero record.
