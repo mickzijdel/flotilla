@@ -1,7 +1,8 @@
 # Flotilla — Agent question/answer channel
 
 **Date:** 2026-06-23
-**Status:** Draft for review
+**Status:** Implemented (2026-06-24) — see the
+[implementation plan](../plans/2026-06-24-flotilla-agent-question-channel.md).
 **Scope:** Lets a running agent ask its human/AI operator a question mid-session and block for the
 answer — with no network and no credentials in the container. Builds on the **daemon's request-handler
 seam** ([2026-06-23-flotilla-daemon-design.md](2026-06-23-flotilla-daemon-design.md) §9), its **inbox**
