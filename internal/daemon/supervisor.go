@@ -27,9 +27,29 @@ type Supervisor struct {
 	Registry *Registry        // request-handler seam (may be nil)
 	Now      func() time.Time // injectable clock (tests); nil ⇒ time.Now
 
+	// deferred tracks (agent,id)→type for non-terminal (StatusDeferred) requests
+	// so each is dispatched (notified) once, not per tick, until answered out of
+	// band. Process-lifetime only; a restart re-notifies a still-pending request
+	// once (acceptable — the inbox dedups visually by id).
+	deferred map[string]string
+	// onAnsweredHook overrides onAnswered's real work in tests.
+	onAnsweredHook func(agent, id, typ, respPath string)
+
 	// Set by RunForeground to drive the re-exec self-check; empty ⇒ no check.
 	ExePath  string
 	LockFile *os.File
+}
+
+// onAnswered observes a deferred request transitioning to answered (its response
+// file appeared out-of-band). Fired exactly once per request.
+func (s *Supervisor) onAnswered(agent, id, typ, respPath string) {
+	if s.onAnsweredHook != nil {
+		s.onAnsweredHook(agent, id, typ, respPath)
+		return
+	}
+	if typ == "question" {
+		s.onQuestionAnswered(agent, id, respPath)
+	}
 }
 
 func (s *Supervisor) now() time.Time {
@@ -110,7 +130,7 @@ func (s *Supervisor) scanOnce(ctx context.Context) {
 			s.handle(ctx, a.Name)
 		}
 		if s.Registry != nil && a.LogDir != "" {
-			dispatchRequests(ctx, s.Registry, a.Name, a.LogDir)
+			s.dispatchRequests(ctx, a.Name, a.LogDir)
 		}
 	}
 }
@@ -146,6 +166,9 @@ func (s *Supervisor) registerHandlers() {
 	}
 	s.Registry.Register("fetch", s.fetchHandler)
 }
+
+// onQuestionAnswered is filled in by the question-channel slice (Task 2).
+func (s *Supervisor) onQuestionAnswered(_, _, _ string) {}
 
 // fetchHandler services an agent-initiated fetch request: it re-fetches origin
 // into that agent's engine-side clone (Fleet.Fetch) and notes the outcome in the
