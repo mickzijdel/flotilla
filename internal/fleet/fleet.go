@@ -232,7 +232,16 @@ func (f *Fleet) List(ctx context.Context) ([]Agent, error) {
 		if c.Labels[backend.LabelProxy] != "" {
 			continue // egress proxy sidecar, not an agent
 		}
-		out = append(out, Agent{Name: c.Name, Repo: c.Repo, Status: c.Status, Created: c.Created, ID: c.ID, LogDir: c.Labels[backend.LabelLogDir]})
+		logDir := c.Labels[backend.LabelLogDir]
+		status := c.Status
+		// Overlay a derived "blocked" state on a running agent waiting on an
+		// operator question — computed purely from the filesystem, so it needs no
+		// daemon. The launch-wrapper status file (which the daemon reads for
+		// done-detection) is untouched; this overlay is only on the listed Status.
+		if status == "running" && hasPendingQuestion(logDir) {
+			status = "blocked"
+		}
+		out = append(out, Agent{Name: c.Name, Repo: c.Repo, Status: status, Created: c.Created, ID: c.ID, LogDir: logDir})
 	}
 	return out, nil
 }
